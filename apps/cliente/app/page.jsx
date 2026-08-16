@@ -13,6 +13,8 @@ export default function Page(){
   const [cart,setCart]=useState([])
   const [showCart,setShowCart]=useState(false)
   const [activeOrder,setActiveOrder]=useState(null)
+  const [showTracking,setShowTracking]=useState(false)
+  const [deliveredSuccess,setDeliveredSuccess]=useState(null)
   const [orderLoading,setOrderLoading]=useState(false)
   const [showAuth,setShowAuth]=useState(false)
   const [authMode,setAuthMode]=useState('login')
@@ -53,7 +55,29 @@ export default function Page(){
     const channel = supabase
       .channel(`customer-order-${session.user.id}`)
       .on('postgres_changes',{
-        event:'*',
+        event:'UPDATE',
+        schema:'public',
+        table:'orders',
+        filter:`customer_id=eq.${session.user.id}`
+      },async(payload)=>{
+        const next=payload.new
+        if(next?.status==='delivered'){
+          setDeliveredSuccess(next)
+          setShowTracking(true)
+          if(activeOrder?.id===next.id){
+            setActiveOrder(prev=>prev?{...prev,...next}:prev)
+          }
+          return
+        }
+        if(next?.status==='cancelled'){
+          setActiveOrder(null)
+          setShowTracking(false)
+          return
+        }
+        await loadActiveOrder(session.user.id)
+      })
+      .on('postgres_changes',{
+        event:'INSERT',
         schema:'public',
         table:'orders',
         filter:`customer_id=eq.${session.user.id}`
@@ -65,7 +89,7 @@ export default function Page(){
       clearInterval(fallback)
       supabase.removeChannel(channel)
     }
-  },[session?.user?.id])
+  },[session?.user?.id,activeOrder?.id])
 
   async function loadActiveOrder(userId){
     if(!userId) return
@@ -157,7 +181,7 @@ export default function Page(){
     }
   }
 
-  async function signOut(){ setActiveOrder(null); await supabase.auth.signOut() }
+  async function signOut(){ setActiveOrder(null); setShowTracking(false); setDeliveredSuccess(null); await supabase.auth.signOut() }
 
   async function checkout(){
     if(!session){setShowAuth(true);return}
@@ -189,7 +213,8 @@ export default function Page(){
 
     setCart([]); setAddress(''); setNotes(''); setShowCart(false); setSelected(null)
     await loadActiveOrder(session.user.id)
-    setMessage('')
+    setShowTracking(false)
+    setMessage('Pedido enviado. Puedes rastrearlo desde Inicio.')
   }
 
   function AuthPanel(){
@@ -242,24 +267,62 @@ export default function Page(){
   }
 
   function CurrentOrderView(){
-    if(!activeOrder) return null
-    const status=activeOrder.status
-    const merchantDelivery=activeOrder.delivery_mode==='merchant'
+    const order=activeOrder
+    if(!order && !deliveredSuccess) return null
+    const delivered=deliveredSuccess || (order?.status==='delivered' ? order : null)
+
+    if(delivered){
+      return <main className="shell current-order-shell" style={{maxWidth:560}}>
+        <div className="between current-order-top">
+          <button type="button" className="btn secondary" onClick={()=>{
+            setDeliveredSuccess(null)
+            setActiveOrder(null)
+            setShowTracking(false)
+          }}>← Inicio</button>
+          <div className="brand">Guti.mx</div>
+          <span/>
+        </div>
+
+        <section className="order-wait-card delivered-card">
+          <div className="delivered-check">✓</div>
+          <div className="order-live-dot delivered-live"><i/> PEDIDO COMPLETADO</div>
+          <h1>¡Pedido entregado con éxito!</h1>
+          <p className="muted order-subtitle">Esperamos que disfrutes tu pedido. Gracias por pedir con Guti.mx.</p>
+
+          <div className="order-info-box">
+            <div className="between"><span>Pedido</span><b>#{delivered.id?.slice(0,8)}</b></div>
+            <div className="between"><span>Total</span><b>${Number(delivered.total||order?.total||0).toFixed(2)}</b></div>
+            <div className="between"><span>Estado</span><b style={{color:'#15954a'}}>Entregado</b></div>
+          </div>
+
+          <button type="button" className="btn" style={{width:'100%',marginTop:18}} onClick={()=>{
+            setDeliveredSuccess(null)
+            setActiveOrder(null)
+            setShowTracking(false)
+          }}>Volver al inicio</button>
+        </section>
+      </main>
+    }
+
+    const status=order.status
+    const merchantDelivery=order.delivery_mode==='merchant'
     const map={
-      pending:{title:'Esperando al negocio',subtitle:`Enviamos tu pedido a ${activeOrder.merchants?.name||'el negocio'}. En cuanto lo acepten te avisamos.`,icon:'⏳',step:1},
-      accepted:{title:'¡Pedido aceptado!',subtitle:`${activeOrder.merchants?.name||'El negocio'} confirmó tu pedido.`,icon:'✅',step:2},
+      pending:{title:'Esperando al negocio',subtitle:`Enviamos tu pedido a ${order.merchants?.name||'el negocio'}. En cuanto lo acepten te avisamos.`,icon:'⏳',step:1},
+      accepted:{title:'¡Pedido aceptado!',subtitle:`${order.merchants?.name||'El negocio'} confirmó tu pedido.`,icon:'✅',step:2},
       preparing:{title:'Están preparando tu pedido',subtitle:'Todo va en orden. Te avisaremos cuando esté listo.',icon:'👨‍🍳',step:2},
-      ready:{title:merchantDelivery?'Tu pedido está listo':'Buscando repartidor',subtitle:merchantDelivery?'El negocio preparará la salida de su repartidor.':'Tu pedido ya está listo y está disponible para los repartidores Guti.',icon:merchantDelivery?'🛍️':'🔎',step:3},
+      ready:{title:merchantDelivery?'Tu pedido está listo':'Buscando repartidor',subtitle:merchantDelivery?'El negocio está preparando la salida de su repartidor.':'Tu pedido ya está listo y está disponible para los repartidores Guti.',icon:merchantDelivery?'🛍️':'🔎',step:3},
       assigned:{title:'¡Ya tienes repartidor!',subtitle:'Un repartidor Guti tomó tu pedido y pronto irá por él.',icon:'🛵',step:3},
       picked_up:{title:'El repartidor ya recogió tu pedido',subtitle:'Tu pedido salió del negocio.',icon:'📦',step:4},
       on_the_way:{title:'Tu pedido va en camino',subtitle:'Ya falta poco. Mantente pendiente para recibirlo.',icon:'🛵',step:4}
     }
     const info=map[status]||{title:'Pedido en curso',subtitle:'Estamos actualizando el estado de tu pedido.',icon:'🧡',step:1}
     const steps=['Pedido enviado','Aceptado','Listo / repartidor','En camino']
+
     return <main className="shell current-order-shell" style={{maxWidth:560}}>
       <div className="between current-order-top">
+        <button type="button" className="btn secondary" onClick={()=>setShowTracking(false)}>← Inicio</button>
         <div className="brand">Guti.mx</div>
-        <span className="pill">Pedido #{activeOrder.id.slice(0,8)}</span>
+        <span className="pill">#{order.id.slice(0,8)}</span>
       </div>
 
       <section className="order-wait-card">
@@ -278,13 +341,13 @@ export default function Page(){
         </div>
 
         <div className="order-info-box">
-          <div className="between"><span>Negocio</span><b>{activeOrder.merchants?.name||'—'}</b></div>
+          <div className="between"><span>Negocio</span><b>{order.merchants?.name||'—'}</b></div>
           <div className="between"><span>Entrega</span><b>{merchantDelivery?'Repartidor del negocio':'Repartidor Guti'}</b></div>
-          <div className="between"><span>Total</span><b>${Number(activeOrder.total).toFixed(2)}</b></div>
-          <div className="between"><span>Pago</span><b>{activeOrder.payment_method==='cash'?'Efectivo':activeOrder.payment_method}</b></div>
+          <div className="between"><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
+          <div className="between"><span>Pago</span><b>{order.payment_method==='cash'?'Efectivo':order.payment_method}</b></div>
         </div>
 
-        <p className="order-persist-note">Puedes cerrar Guti.mx. Cuando vuelvas, este pedido seguirá apareciendo hasta que sea entregado.</p>
+        <p className="order-persist-note">Puedes volver al inicio y seguir usando Guti.mx. Tu pedido seguirá disponible en “Rastrear pedido” hasta que sea entregado.</p>
         <button type="button" className="btn secondary" onClick={()=>loadActiveOrder(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
       </section>
     </main>
@@ -336,7 +399,7 @@ export default function Page(){
     </div>
   }
 
-  if(activeOrder) return <CurrentOrderView/>
+  if(showTracking && (activeOrder || deliveredSuccess)) return <CurrentOrderView/>
 
   if(selected){
     return <main className="shell" style={{maxWidth:560}}>{CartDrawer()}
@@ -370,6 +433,17 @@ export default function Page(){
     <div style={{textAlign:'center',margin:'22px 0'}}><div className="brand" style={{fontSize:48,fontStyle:'italic'}}>Guti.mx</div><div className="muted">Lo que necesites, te lo llevamos.</div></div>
     {showAuth&&AuthPanel()}
     <input placeholder="¿Qué quieres pedir hoy?" />
+
+    {activeOrder&&<section className="active-order-banner">
+      <div className="active-order-icon">{activeOrder.status==='on_the_way'?'🛵':activeOrder.status==='ready'?'🛍️':'🧡'}</div>
+      <div className="active-order-copy">
+        <small>PEDIDO EN CURSO</small>
+        <b>{activeOrder.merchants?.name||'Tu pedido'}</b>
+        <span>{activeOrder.status==='pending'?'Esperando aceptación':activeOrder.status==='accepted'?'Pedido aceptado':activeOrder.status==='preparing'?'Preparando':activeOrder.status==='ready'?'Pedido listo':activeOrder.status==='assigned'?'Repartidor asignado':activeOrder.status==='picked_up'?'Pedido recogido':'En camino'}</span>
+      </div>
+      <button type="button" className="btn track-btn" onClick={()=>setShowTracking(true)}>Rastrear pedido</button>
+    </section>}
+
     <div className="grid" style={{gridTemplateColumns:'repeat(4,1fr)',margin:'20px 0'}}>{cats.map(x=><div className="card" key={x} style={{padding:12,textAlign:'center',fontSize:12}}>{x}</div>)}</div>
     <div className="card" style={{background:'linear-gradient(135deg,#f4510b,#ff7a18)',color:'#fff',marginBottom:22}}><span className="pill">GUTI PUNTOS</span><h2>Compra local y gana recompensas</h2><p>Acumula puntos y recibe beneficios.</p></div>
     <div className="between"><h2>Negocios</h2><span className="pill">Envío fijo $45</span></div>

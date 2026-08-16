@@ -54,3 +54,15 @@ table{width:100%;border-collapse:collapse;background:white;border-radius:16px;ov
 .order-info-box{text-align:left;background:#fafafa;border-radius:16px;padding:15px;display:grid;gap:12px}
 .order-info-box .between{font-size:13px}
 .order-persist-note{font-size:11px;color:#888;line-height:1.5;margin:18px 0}
+
+.active-order-banner{margin:14px 0 4px;border-radius:18px;padding:14px;background:linear-gradient(135deg,#fff2e9,#fff);border:1px solid #ffd9c5;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;box-shadow:0 10px 30px #ea5a120d}
+.active-order-icon{width:48px;height:48px;border-radius:15px;background:#fff;display:grid;place-items:center;font-size:26px}
+.active-order-copy{display:grid;gap:2px;min-width:0}
+.active-order-copy small{font-size:9px;font-weight:900;color:var(--orange);letter-spacing:.8px}
+.active-order-copy b{font-size:14px}
+.active-order-copy span{font-size:11px;color:#777}
+.track-btn{white-space:nowrap;padding:10px 12px;font-size:12px}
+.delivered-card{background:linear-gradient(180deg,#f5fff8,#fff 55%)}
+.delivered-check{width:92px;height:92px;border-radius:50%;background:#dff8e7;color:#15954a;display:grid;place-items:center;font-size:48px;font-weight:900;margin:0 auto 16px;box-shadow:0 0 0 10px #effcf3}
+.delivered-live{color:#15954a}
+@media(max-width:520px){.active-order-banner{grid-template-columns:auto 1fr}.active-order-banner .track-btn{grid-column:1/-1;width:100%}}
