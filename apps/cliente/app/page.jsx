@@ -48,6 +48,12 @@ export default function Page(){
 
   const [cart,setCart]=useState([])
   const [showCart,setShowCart]=useState(false)
+  const [customizingProduct,setCustomizingProduct]=useState(null)
+  const [customGroups,setCustomGroups]=useState([])
+  const [customSelections,setCustomSelections]=useState({})
+  const [customQty,setCustomQty]=useState(1)
+  const [customNotes,setCustomNotes]=useState('')
+  const [customBusy,setCustomBusy]=useState(false)
 
   const [activeOrders,setActiveOrders]=useState([])
   const [orderHistory,setOrderHistory]=useState([])
@@ -193,25 +199,111 @@ export default function Page(){
     setProducts(data||[])
   }
 
-  function add(p){
-    if(cart.length && cart[0].merchant_id!==p.merchant_id){
-      setMessage('Tu carrito tiene productos de otro negocio. Vacíalo antes de pedir aquí.')
-      setShowCart(true)
+  async function add(p){
+    setMessage('')
+    setCustomBusy(true)
+    const {data:groups,error}=await supabase
+      .from('product_option_groups')
+      .select('*,product_options(*)')
+      .eq('product_id',p.id)
+      .order('id')
+    setCustomBusy(false)
+
+    if(error){
+      setMessage(error.message)
       return
     }
+
+    const normalized=(groups||[]).map(g=>({
+      ...g,
+      product_options:(g.product_options||[]).filter(o=>o.is_available!==false)
+    }))
+
+    if(normalized.length){
+      setCustomizingProduct(p)
+      setCustomGroups(normalized)
+      setCustomSelections({})
+      setCustomQty(1)
+      setCustomNotes('')
+      return
+    }
+
+    addConfiguredItem(p,[],1,'')
+  }
+
+  function addConfiguredItem(p,selectedOptions,qty=1,notes=''){
+    const optionsTotal=selectedOptions.reduce((s,o)=>s+Number(o.extra_price||0),0)
+    const unitPrice=Number(p.price)+optionsTotal
+    const signature=JSON.stringify(selectedOptions.map(o=>[o.group_id,o.option_id]).sort())
+    const cartKey=`${p.id}:${signature}:${notes.trim()}`
     setCart(prev=>{
-      const x=prev.find(i=>i.id===p.id)
-      return x?prev.map(i=>i.id===p.id?{...i,qty:i.qty+1}:i):[...prev,{...p,qty:1,merchant_id:p.merchant_id}]
+      const x=prev.find(i=>i.cart_key===cartKey)
+      return x
+        ? prev.map(i=>i.cart_key===cartKey?{...i,qty:i.qty+qty}:i)
+        : [...prev,{
+            ...p,
+            cart_key:cartKey,
+            qty,
+            merchant_id:p.merchant_id,
+            base_price:Number(p.price),
+            price:unitPrice,
+            selected_options:selectedOptions,
+            item_notes:notes.trim()
+          }]
+    })
+    setCustomizingProduct(null)
+  }
+
+  function toggleCustomOption(group,option){
+    setCustomSelections(prev=>{
+      const current=prev[group.id]||[]
+      const exists=current.some(id=>id===option.id)
+      let next
+      if(exists) next=current.filter(id=>id!==option.id)
+      else if(Number(group.max_select||1)===1) next=[option.id]
+      else if(current.length<Number(group.max_select||1)) next=[...current,option.id]
+      else next=current
+      return {...prev,[group.id]:next}
     })
   }
-  const changeQty=(id,d)=>setCart(prev=>prev.map(i=>i.id===id?{...i,qty:i.qty+d}:i).filter(i=>i.qty>0))
-  const removeItem=id=>setCart(prev=>prev.filter(i=>i.id!==id))
+
+  function confirmCustomization(){
+    const selected=[]
+    for(const group of customGroups){
+      const ids=customSelections[group.id]||[]
+      if(ids.length<Number(group.min_select||0)){
+        setMessage(`Selecciona al menos ${group.min_select} en "${group.name}".`)
+        return
+      }
+      for(const id of ids){
+        const opt=(group.product_options||[]).find(o=>o.id===id)
+        if(opt) selected.push({
+          group_id:group.id,
+          group_name:group.name,
+          option_id:opt.id,
+          option_name:opt.name,
+          extra_price:Number(opt.extra_price||0)
+        })
+      }
+    }
+    addConfiguredItem(customizingProduct,selected,customQty,customNotes)
+  }
+  const changeQty=(key,d)=>setCart(prev=>prev.map(i=>i.cart_key===key?{...i,qty:i.qty+d}:i).filter(i=>i.qty>0))
+  const removeItem=key=>setCart(prev=>prev.filter(i=>i.cart_key!==key))
   const clearCart=()=>setCart([])
 
   const subtotal=cart.reduce((s,x)=>s+Number(x.price)*x.qty,0)
-  const delivery=cart.length?45:0
+  const cartMerchantIds=[...new Set(cart.map(x=>x.merchant_id))]
+  const delivery=cart.length?45*cartMerchantIds.length:0
   const total=subtotal+delivery
   const cartCount=cart.reduce((s,x)=>s+x.qty,0)
+
+  const cartGroups=cartMerchantIds.map(merchantId=>{
+    const items=cart.filter(x=>x.merchant_id===merchantId)
+    const merchant=merchants.find(m=>m.id===merchantId)
+    const groupSubtotal=items.reduce((s,x)=>s+Number(x.price)*x.qty,0)
+    return {merchantId,merchant,items,subtotal:groupSubtotal,total:groupSubtotal+45}
+  })
 
   async function signIn(){
     if(authBusy)return
@@ -280,36 +372,48 @@ export default function Page(){
     await loadAddresses(session.user.id)
   }
 
-  async function checkout(){
+  async function checkoutMerchant(merchantId){
     if(!session){setShowCart(false);setShowAuth(true);return}
-    if(!cart.length)return
+    const group=cartGroups.find(g=>g.merchantId===merchantId)
+    if(!group||!group.items.length)return
     if(!selectedAddress){setShowCart(false);setShowAddressPicker(true);return}
-    const merchantId=cart[0].merchant_id
-    const merchant=merchants.find(m=>m.id===merchantId)||selectedMerchant
+
+    const merchant=group.merchant||merchants.find(m=>m.id===merchantId)
     const {data:order,error:oerr}=await supabase.from('orders').insert({
       customer_id:session.user.id,
       merchant_id:merchantId,
       address_id:selectedAddress.id,
       status:'pending',
       delivery_mode:merchant?.delivery_mode||'guti',
-      subtotal,delivery_fee:45,discount:0,total,
-      payment_method:'cash',payment_status:'pending',
+      subtotal:group.subtotal,
+      delivery_fee:45,
+      discount:0,
+      total:group.total,
+      payment_method:'cash',
+      payment_status:'pending',
       notes:checkoutNotes
     }).select().single()
     if(oerr)return setMessage(oerr.message)
 
-    const items=cart.map(x=>({
-      order_id:order.id,product_id:x.id,product_name:x.name,unit_price:x.price,
-      quantity:x.qty,line_total:Number(x.price)*x.qty,selected_options:[]
+    const items=group.items.map(x=>({
+      order_id:order.id,
+      product_id:x.id,
+      product_name:x.name,
+      unit_price:Number(x.price),
+      quantity:x.qty,
+      line_total:Number(x.price)*x.qty,
+      selected_options:x.selected_options||[]
     }))
     const {error:ierr}=await supabase.from('order_items').insert(items)
     if(ierr)return setMessage(ierr.message)
 
-    clearCart();setCheckoutNotes('');setShowCart(false);setSelectedMerchant(null)
+    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
+    setCheckoutNotes('')
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
     setTab('home')
-    setMessage('Pedido enviado. Ya puedes rastrearlo desde Inicio.')
+    setMessage(`Pedido enviado a ${merchant?.name||'el negocio'}. Puedes rastrearlo desde Inicio.`)
   }
+
 
   const filteredMerchants=merchants.filter(m=>{
     const q=query.trim().toLowerCase()
@@ -394,43 +498,132 @@ export default function Page(){
     return <div className="cart-overlay" onClick={()=>setShowCart(false)}>
       <aside className="cart-drawer cart-v2" onClick={e=>e.stopPropagation()}>
         <div className="between cart-head">
-          <div><small className="eyebrow">TU PEDIDO</small><h2>Carrito</h2></div>
+          <div><small className="eyebrow">TUS PEDIDOS</small><h2>Carrito</h2></div>
           <button className="cart-close" onClick={()=>setShowCart(false)}><X/></button>
         </div>
+
         {!cart.length?<div className="empty-state cart-empty">
-          <span className="empty-icon"><ShoppingCart/></span><h3>Tu carrito está vacío</h3><p>Explora los negocios de Guti y agrega algo que se te antoje.</p>
+          <span className="empty-icon"><ShoppingCart/></span><h3>Tu carrito está vacío</h3>
+          <p>Explora los negocios de Guti y agrega algo que se te antoje.</p>
           <button className="primary-wide" onClick={()=>setShowCart(false)}>Explorar</button>
         </div>:<>
-          <div className="cart-items">
-            {cart.map(i=><article className="cart-item-v2" key={i.id}>
-              <div className="cart-item-copy"><b>{i.name}</b><small>${Number(i.price).toFixed(2)} c/u</small><strong>${(Number(i.price)*i.qty).toFixed(2)}</strong></div>
-              <div className="qty-control">
-                <button onClick={()=>changeQty(i.id,-1)}><Minus/></button><b>{i.qty}</b><button onClick={()=>changeQty(i.id,1)}><Plus/></button>
+          <p className="multi-cart-note">{cartGroups.length>1
+            ? `Tienes productos de ${cartGroups.length} negocios. Cada negocio se confirma como un pedido separado.`
+            : 'Revisa tu pedido antes de confirmarlo.'}</p>
+
+          <div className="merchant-cart-groups">
+            {cartGroups.map(group=><section className="merchant-cart-section" key={group.merchantId}>
+              <header>
+                <span className="merchant-cart-logo">
+                  {group.merchant?.logo_url?<img src={group.merchant.logo_url} alt=""/>:<Store/>}
+                </span>
+                <div><small>TU CARRITO DE</small><h3>{group.merchant?.name||'Negocio'}</h3><em>Envío $45</em></div>
+                <strong>${group.total.toFixed(2)}</strong>
+              </header>
+
+              <div className="cart-items">
+                {group.items.map(i=><article className="cart-item-v2" key={i.cart_key}>
+                  <div className="cart-item-copy">
+                    <b>{i.name}</b>
+                    {(i.selected_options||[]).length>0&&<div className="selected-options-mini">
+                      {i.selected_options.map((o,idx)=><span key={idx}>{o.group_name}: <b>{o.option_name}</b>{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</span>)}
+                    </div>}
+                    {i.item_notes&&<em>Nota: {i.item_notes}</em>}
+                    <small>${Number(i.price).toFixed(2)} c/u</small>
+                    <strong>${(Number(i.price)*i.qty).toFixed(2)}</strong>
+                  </div>
+                  <div className="qty-control">
+                    <button onClick={()=>changeQty(i.cart_key,-1)}><Minus/></button><b>{i.qty}</b><button onClick={()=>changeQty(i.cart_key,1)}><Plus/></button>
+                  </div>
+                  <button className="trash-btn" onClick={()=>removeItem(i.cart_key)}><Trash2/></button>
+                </article>)}
               </div>
-              <button className="trash-btn" onClick={()=>removeItem(i.id)}><Trash2/></button>
-            </article>)}
+
+              <div className="merchant-cart-totals">
+                <div><span>Subtotal</span><b>${group.subtotal.toFixed(2)}</b></div>
+                <div><span>Envío fijo</span><b>$45.00</b></div>
+              </div>
+
+              <button className="checkout-button" onClick={()=>checkoutMerchant(group.merchantId)}>
+                <span><ShoppingCart/> Pedir en {group.merchant?.name||'este negocio'}</span>
+                <b>${group.total.toFixed(2)}</b>
+              </button>
+            </section>)}
           </div>
 
           <button className="checkout-address" onClick={()=>setShowAddressPicker(true)}>
             <span className="checkout-address-icon"><MapPin/></span>
-            <span><small>Entregar en</small><b>{selectedAddress?.label||'Agregar dirección'}</b><em>{selectedAddress?.formatted_address||'Selecciona dónde recibirás tu pedido'}</em></span>
+            <span><small>Dirección para los pedidos</small><b>{selectedAddress?.label||'Agregar dirección'}</b><em>{selectedAddress?.formatted_address||'Selecciona dónde recibirás tu pedido'}</em></span>
             <ChevronRight/>
           </button>
 
-          <textarea className="cart-notes" rows="2" placeholder="Nota para el negocio (opcional)" value={checkoutNotes} onChange={e=>setCheckoutNotes(e.target.value)}/>
-
-          <div className="cart-total-box">
-            <div><span>Subtotal</span><b>${subtotal.toFixed(2)}</b></div>
-            <div><span>Envío fijo</span><b>${delivery.toFixed(2)}</b></div>
-            <div className="grand-total"><span>Total</span><strong>${total.toFixed(2)}</strong></div>
-          </div>
-
-          <button className="checkout-button" onClick={checkout}>
-            <span><ShoppingCart/> Hacer pedido</span><b>${total.toFixed(2)}</b>
-          </button>
-          <button className="clear-cart-link" onClick={clearCart}>Vaciar carrito</button>
+          <textarea className="cart-notes" rows="2" placeholder="Nota general para el pedido que confirmes" value={checkoutNotes} onChange={e=>setCheckoutNotes(e.target.value)}/>
+          <button className="clear-cart-link" onClick={clearCart}>Vaciar todos los carritos</button>
         </>}
       </aside>
+    </div>
+  }
+
+
+  function ProductCustomizationModal(){
+    if(!customizingProduct)return null
+    const extras=customGroups.reduce((sum,g)=>{
+      const ids=customSelections[g.id]||[]
+      return sum+(g.product_options||[]).filter(o=>ids.includes(o.id)).reduce((s,o)=>s+Number(o.extra_price||0),0)
+    },0)
+    const unit=Number(customizingProduct.price)+extras
+    const totalCustom=unit*customQty
+
+    return <div className="modal-backdrop" onClick={()=>setCustomizingProduct(null)}>
+      <section className="customer-custom-modal" onClick={e=>e.stopPropagation()}>
+        <header>
+          <div><small>PERSONALIZA TU PEDIDO</small><h2>{customizingProduct.name}</h2></div>
+          <button onClick={()=>setCustomizingProduct(null)}><X/></button>
+        </header>
+
+        <div className="custom-product-summary">
+          <div className="custom-product-image">{customizingProduct.image_url?<img src={customizingProduct.image_url} alt=""/>:<UtensilsCrossed/>}</div>
+          <div><p>{customizingProduct.description||'Personaliza este producto a tu gusto.'}</p><b>Desde ${Number(customizingProduct.price).toFixed(2)}</b></div>
+        </div>
+
+        <div className="custom-groups">
+          {customGroups.map(group=>{
+            const selectedIds=customSelections[group.id]||[]
+            return <section className="custom-group" key={group.id}>
+              <div className="custom-group-head">
+                <div><h3>{group.name}</h3><p>{Number(group.min_select||0)>0?'Obligatorio':'Opcional'} · Elige {group.max_select>1?`hasta ${group.max_select}`:'1'}</p></div>
+                {Number(group.min_select||0)>0&&<span>REQUERIDO</span>}
+              </div>
+              <div className="custom-options">
+                {(group.product_options||[]).map(opt=>{
+                  const active=selectedIds.includes(opt.id)
+                  return <button className={active?'selected':''} key={opt.id} onClick={()=>toggleCustomOption(group,opt)}>
+                    <span className="choice-circle">{active?<Check/>:null}</span>
+                    <b>{opt.name}</b>
+                    <em>{Number(opt.extra_price)>0?`+$${Number(opt.extra_price).toFixed(2)}`:'Incluido'}</em>
+                  </button>
+                })}
+              </div>
+            </section>
+          })}
+        </div>
+
+        <div className="custom-notes">
+          <label>Nota para este producto</label>
+          <textarea rows="2" placeholder="Ej. Sin cebolla, bien tostado..." value={customNotes} onChange={e=>setCustomNotes(e.target.value)}/>
+        </div>
+
+        <footer className="custom-footer">
+          <div className="custom-qty">
+            <button onClick={()=>setCustomQty(q=>Math.max(1,q-1))}><Minus/></button>
+            <b>{customQty}</b>
+            <button onClick={()=>setCustomQty(q=>q+1)}><Plus/></button>
+          </div>
+          <button className="custom-add-button" onClick={confirmCustomization}>
+            <span>Agregar al carrito</span><b>${totalCustom.toFixed(2)}</b>
+          </button>
+        </footer>
+      </section>
     </div>
   }
 
@@ -669,7 +862,7 @@ export default function Page(){
       </section>
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
-      {CartDrawer()}{AuthModal()}{AddressModal()}
+      {CartDrawer()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
     </main>
   }
 
@@ -684,6 +877,6 @@ export default function Page(){
       {tab==='profile'&&<ProfileView/>}
     </div>
     <BottomNav/>
-    {CartDrawer()}{AuthModal()}{AddressModal()}
+    {CartDrawer()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
   </main>
 }

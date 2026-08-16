@@ -104,3 +104,31 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
     font-size:16px !important;
   }
 }
+
+.multi-cart-note{font-size:11px;color:#777;background:#fafafa;border-radius:12px;padding:10px 12px;line-height:1.45}
+.merchant-cart-groups{display:grid;gap:15px;margin:14px 0}
+.merchant-cart-section{border:1px solid #e9e9e9;border-radius:18px;padding:13px;background:#fff}
+.merchant-cart-section>header{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;border-bottom:1px solid #eee;padding-bottom:11px}
+.merchant-cart-logo{width:44px;height:44px;border-radius:13px;background:#f5f5f5;overflow:hidden;display:grid;place-items:center;color:#aaa}
+.merchant-cart-logo img{width:100%;height:100%;object-fit:cover}.merchant-cart-logo svg{width:20px}
+.merchant-cart-section>header>div{display:grid}.merchant-cart-section>header small{font-size:8px;color:var(--orange);font-weight:900;letter-spacing:.7px}
+.merchant-cart-section>header h3{font-size:13px;margin:1px 0}.merchant-cart-section>header em{font-size:8px;color:#888;font-style:normal}
+.merchant-cart-section>header strong{font-size:14px}
+.merchant-cart-totals{display:grid;gap:5px;padding:9px 0;border-top:1px solid #eee}.merchant-cart-totals>div{display:flex;justify-content:space-between;font-size:10px}
+.selected-options-mini{display:grid;gap:2px;margin:4px 0}.selected-options-mini span{font-size:8px;color:#666}.selected-options-mini span b{font-size:8px}
+.cart-item-copy>em{font-size:8px;color:#9a6b4d;font-style:normal;margin:2px 0}
+.customer-custom-modal{width:min(100%,520px);max-height:92vh;overflow:auto;background:#fff;border-radius:25px 25px 0 0;position:relative}
+.customer-custom-modal>header{position:sticky;top:0;z-index:4;background:#fff;border-bottom:1px solid #eee;padding:16px 18px;display:flex;justify-content:space-between;align-items:center}
+.customer-custom-modal>header small{font-size:8px;color:var(--orange);font-weight:900;letter-spacing:.8px}
+.customer-custom-modal>header h2{font-size:18px;margin:2px 0}.customer-custom-modal>header button{width:36px;height:36px;border:0;background:#f3f3f3;border-radius:50%;display:grid;place-items:center}
+.custom-product-summary{display:grid;grid-template-columns:82px 1fr;gap:12px;padding:15px 18px;background:#fff8f4}
+.custom-product-image{height:78px;border-radius:14px;background:#f1f1f1;overflow:hidden;display:grid;place-items:center;color:#aaa}.custom-product-image img{width:100%;height:100%;object-fit:cover}.custom-product-image svg{width:27px}
+.custom-product-summary>div:last-child{display:grid;align-content:center}.custom-product-summary p{font-size:9px;color:#777;margin:0 0 6px;line-height:1.4}.custom-product-summary b{font-size:13px}
+.custom-groups{padding:0 18px}.custom-group{padding:16px 0;border-bottom:1px solid #eee}.custom-group-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.custom-group-head h3{font-size:14px;margin:0}.custom-group-head p{font-size:8px;color:#888;margin:3px 0 0}.custom-group-head>span{font-size:7px;background:#fff1e8;color:var(--orange);border-radius:99px;padding:5px 7px;font-weight:900}
+.custom-options{display:grid;gap:7px;margin-top:10px}.custom-options button{border:1px solid #e5e5e5;background:#fff;border-radius:12px;padding:10px;display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;text-align:left}.custom-options button.selected{border-color:#f49d76;background:#fff9f6}
+.choice-circle{width:26px;height:26px;border-radius:50%;border:1px solid #ddd;display:grid;place-items:center;color:#fff}.custom-options button.selected .choice-circle{background:var(--orange);border-color:var(--orange)}.choice-circle svg{width:13px}
+.custom-options b{font-size:10px}.custom-options em{font-size:9px;color:#777;font-style:normal}
+.custom-notes{padding:14px 18px}.custom-notes label{display:block;font-size:9px;font-weight:800;margin-bottom:5px}.custom-notes textarea{width:100%;border:1px solid #ddd;border-radius:12px;padding:10px;font-size:16px}
+.custom-footer{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;padding:12px 18px;display:grid;grid-template-columns:105px 1fr;gap:10px}
+.custom-qty{border:1px solid #ddd;border-radius:12px;display:grid;grid-template-columns:1fr 30px 1fr;align-items:center}.custom-qty button{border:0;background:transparent;display:grid;place-items:center}.custom-qty button svg{width:15px}.custom-qty b{text-align:center;font-size:11px}
+.custom-add-button{border:0;background:var(--orange);color:#fff;border-radius:12px;padding:12px;display:flex;justify-content:space-between;font-size:10px;font-weight:900}

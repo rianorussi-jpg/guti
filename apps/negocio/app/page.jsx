@@ -189,6 +189,18 @@ export default function Page(){
     if(selectedOrder?.id===order.id)setSelectedOrder(prev=>({...prev,status}))
   }
 
+  async function acceptOrderWithDelivery(order,deliveryMode){
+    setMsg('')
+    const {error}=await supabase.rpc('merchant_accept_order',{
+      p_order_id:order.id,
+      p_delivery_mode:deliveryMode
+    })
+    if(error)return setMsg(error.message)
+    setNewOrderIds(prev=>prev.filter(id=>id!==order.id))
+    await loadOrders(merchant.id)
+    if(selectedOrder?.id===order.id)setSelectedOrder(prev=>({...prev,status:'accepted',delivery_mode:deliveryMode}))
+  }
+
   async function openOrder(order){
     setSelectedOrder(order)
     setNewOrderIds(prev=>prev.filter(id=>id!==order.id))
@@ -523,12 +535,13 @@ export default function Page(){
                 <button className="secondary-btn" onClick={()=>openOrder(o)}>Ver detalle</button>
                 {o.status==='pending'&&<>
                   <button className="danger-btn" onClick={()=>status(o,'cancelled')}>Rechazar</button>
-                  <button className="primary-btn" onClick={()=>status(o,'accepted')}>Aceptar</button>
+                  <button className="secondary-btn" onClick={()=>acceptOrderWithDelivery(o,'merchant')}>Aceptar · Lo entregamos</button>
+                  <button className="primary-btn" onClick={()=>acceptOrderWithDelivery(o,'guti')}>Aceptar · Pedir Guti</button>
                 </>}
                 {o.status==='accepted'&&<button className="primary-btn" onClick={()=>status(o,'preparing')}>Empezar a preparar</button>}
                 {o.status==='preparing'&&<button className="primary-btn" onClick={()=>status(o,'ready')}>Marcar listo</button>}
-                {merchant.delivery_mode==='merchant'&&o.status==='ready'&&<button className="primary-btn" onClick={()=>status(o,'on_the_way')}>Salió a entrega</button>}
-                {merchant.delivery_mode==='merchant'&&o.status==='on_the_way'&&<button className="primary-btn" onClick={()=>status(o,'delivered')}>Marcar entregado</button>}
+                {o.delivery_mode==='merchant'&&o.status==='ready'&&<button className="primary-btn" onClick={()=>status(o,'on_the_way')}>Salió a entrega</button>}
+                {o.delivery_mode==='merchant'&&o.status==='on_the_way'&&<button className="primary-btn" onClick={()=>status(o,'delivered')}>Marcar entregado</button>}
               </div>
             </article>)}
             {!shownOrders.length&&<Empty icon={ReceiptText} title="No hay pedidos aquí" text="Cambia el filtro o espera un nuevo pedido."/>}
@@ -646,7 +659,7 @@ export default function Page(){
       </div>
     </section>
 
-    {selectedOrder&&<OrderModal order={selectedOrder} items={orderItems} onClose={()=>setSelectedOrder(null)} onStatus={status} merchant={merchant}/>}
+    {selectedOrder&&<OrderModal order={selectedOrder} items={orderItems} onClose={()=>setSelectedOrder(null)} onStatus={status} onAccept={acceptOrderWithDelivery} merchant={merchant}/>}
     {showProduct&&ProductModal()}
   </main>
 
@@ -711,7 +724,7 @@ export default function Page(){
   }
 }
 
-function OrderModal({order,items,onClose,onStatus,merchant}){
+function OrderModal({order,items,onClose,onStatus,onAccept,merchant}){
   return <div className="modal-backdrop" onClick={onClose}>
     <section className="order-modal" onClick={e=>e.stopPropagation()}>
       <header><div><small>PEDIDO #{order.id.slice(0,8)}</small><h2>{order.profiles?.full_name||'Cliente Guti'}</h2></div><button onClick={onClose}><X/></button></header>
@@ -730,11 +743,15 @@ function OrderModal({order,items,onClose,onStatus,merchant}){
         </aside>
       </div>
       <footer>
-        {order.status==='pending'&&<><button className="danger-btn" onClick={()=>onStatus(order,'cancelled')}>Rechazar</button><button className="primary-btn" onClick={()=>onStatus(order,'accepted')}>Aceptar pedido</button></>}
+        {order.status==='pending'&&<>
+          <button className="danger-btn" onClick={()=>onStatus(order,'cancelled')}>Rechazar</button>
+          <button className="secondary-btn" onClick={()=>onAccept(order,'merchant')}>Aceptar · Repartidor propio</button>
+          <button className="primary-btn" onClick={()=>onAccept(order,'guti')}>Aceptar · Solicitar Guti</button>
+        </>}
         {order.status==='accepted'&&<button className="primary-btn" onClick={()=>onStatus(order,'preparing')}>Empezar a preparar</button>}
         {order.status==='preparing'&&<button className="primary-btn" onClick={()=>onStatus(order,'ready')}>Pedido listo</button>}
-        {merchant.delivery_mode==='merchant'&&order.status==='ready'&&<button className="primary-btn" onClick={()=>onStatus(order,'on_the_way')}>Salió a entrega</button>}
-        {merchant.delivery_mode==='merchant'&&order.status==='on_the_way'&&<button className="primary-btn" onClick={()=>onStatus(order,'delivered')}>Marcar entregado</button>}
+        {order.delivery_mode==='merchant'&&order.status==='ready'&&<button className="primary-btn" onClick={()=>onStatus(order,'on_the_way')}>Salió a entrega</button>}
+        {order.delivery_mode==='merchant'&&order.status==='on_the_way'&&<button className="primary-btn" onClick={()=>onStatus(order,'delivered')}>Marcar entregado</button>}
       </footer>
     </section>
   </div>
