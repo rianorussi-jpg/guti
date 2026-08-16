@@ -191,7 +191,7 @@ export default function Page(){
         <button className="btn" style={{width:'100%',marginTop:10}} onClick={checkout}>Confirmar pedido · Efectivo · Envío $45</button>
       </div>}
       {message&&<p className="card">{message}</p>}
-      {showAuth&&<AuthPanel/>}
+      {showAuth&&AuthPanel()}
     </main>
   }
 
@@ -201,7 +201,7 @@ export default function Page(){
       {session?<button className="btn secondary" onClick={signOut}>Salir</button>:<button type="button" className="btn secondary" onClick={()=>{setAuthMode('login');setShowAuth(!showAuth)}}>Entrar</button>}
     </div>
     <div style={{textAlign:'center',margin:'22px 0'}}><div className="brand" style={{fontSize:48,fontStyle:'italic'}}>Guti.mx</div><div className="muted">Lo que necesites, te lo llevamos.</div></div>
-    {showAuth&&<AuthPanel/>}
+    {showAuth&&AuthPanel()}
     <input placeholder="¿Qué quieres pedir hoy?" />
     <div className="grid" style={{gridTemplateColumns:'repeat(4,1fr)',margin:'20px 0'}}>{cats.map(x=><div className="card" key={x} style={{padding:12,textAlign:'center',fontSize:12}}>{x}</div>)}</div>
     <div className="card" style={{background:'linear-gradient(135deg,#f4510b,#ff7a18)',color:'#fff',marginBottom:22}}><span className="pill">GUTI PUNTOS</span><h2>Compra local y gana recompensas</h2><p>Acumula puntos y recibe beneficios.</p></div>
