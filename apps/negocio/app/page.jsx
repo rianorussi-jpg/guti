@@ -647,7 +647,7 @@ export default function Page(){
     </section>
 
     {selectedOrder&&<OrderModal order={selectedOrder} items={orderItems} onClose={()=>setSelectedOrder(null)} onStatus={status} merchant={merchant}/>}
-    {showProduct&&<ProductModal/>}
+    {showProduct&&ProductModal()}
   </main>
 
   function ProductModal(){
