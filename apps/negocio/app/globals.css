@@ -50,3 +50,21 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}svg{width:20px;h
   .business-app{display:block}.business-main{grid-column:auto}.sidebar{transform:translateX(-105%);transition:.2s}.sidebar.open{transform:translateX(0);box-shadow:20px 0 50px #0005}.mobile-menu{display:grid;place-items:center}.business-topbar{padding:0 13px;height:68px}.business-content{padding:14px}.topbar-title small{display:none}.topbar-title h1{font-size:15px}.store-switch span{display:none}.store-switch{padding:0 8px}.welcome-panel{align-items:flex-start;gap:12px}.welcome-panel button{display:none}.stats-grid{grid-template-columns:1fr 1fr;gap:8px}.stats-grid article{grid-template-columns:36px 1fr;padding:11px}.stat-icon{width:36px;height:36px}.stats-grid b{font-size:17px}
   .toolbar{display:grid}.search-box{min-width:0;height:38px}.segmented{overflow:auto}.page-intro{align-items:flex-start;gap:10px}.page-intro h2{font-size:21px}.page-intro p{max-width:250px}.product-table article{grid-template-columns:48px 1fr auto 34px}.product-table article>strong{grid-column:2}.product-table article>.availability{grid-column:3}.product-table article>.icon-btn.danger{display:none}.product-editor-grid,.order-modal-grid{grid-template-columns:1fr}.product-editor-side{grid-row:1}.modal-backdrop{padding:0;align-items:end}.product-modal,.order-modal{width:100%;max-height:95vh;border-radius:22px 22px 0 0}.hours-panel article{grid-template-columns:1fr 90px}.hours-panel input,.hours-panel>article>span{display:none}.two-cols{grid-template-columns:1fr}.option-row{grid-template-columns:1fr 80px 32px 28px}
 }
+
+/* Mobile UX: evita el zoom automático de Safari/iPhone al enfocar campos. */
+@media (max-width: 768px){
+  input,
+  textarea,
+  select,
+  .login-card input,
+  .search-box input,
+  .panel input,
+  .panel textarea,
+  .panel select,
+  .editor-card input,
+  .editor-card textarea,
+  .editor-card select,
+  .hours-panel input{
+    font-size:16px !important;
+  }
+}

@@ -583,7 +583,7 @@ export default function Page(){
     return <>
       <Header/>
       <div className="page-heading"><small>DESCUBRE</small><h1>Explorar</h1><p>Restaurantes, tiendas y súper de Gutiérrez Zamora.</p></div>
-      <div className="search-v2"><Search/><input autoFocus placeholder="Buscar negocio..." value={query} onChange={e=>setQuery(e.target.value)}/></div>
+      <div className="search-v2"><Search/><input placeholder="Buscar negocio..." value={query} onChange={e=>setQuery(e.target.value)}/></div>
       <div className="filter-row">
         <button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>Todos</button>
         <button className={category==='food'?'active':''} onClick={()=>setCategory('food')}>Comida</button>

@@ -91,3 +91,16 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
   .client-content{padding:0 14px 100px}.merchant-grid-v2{gap:9px}.merchant-cover-v2{height:92px}
   .address-header em{max-width:180px}.category-grid-v2{gap:15px 5px}.category-grid-v2 button>span{width:51px;height:51px}
 }
+
+/* Mobile UX: Safari/iPhone hace zoom en inputs con fuente menor a 16px. */
+@media (max-width: 768px){
+  input,
+  textarea,
+  select,
+  .search-v2 input,
+  .auth-modern input,
+  .address-form textarea,
+  .cart-notes{
+    font-size:16px !important;
+  }
+}
