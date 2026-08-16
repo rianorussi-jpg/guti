@@ -8,10 +8,31 @@ export default function Page(){
  const [jobs,setJobs]=useState([]),[mine,setMine]=useState([]),[msg,setMsg]=useState('')
  useEffect(()=>{supabase.auth.getSession().then(({data})=>{setSession(data.session);if(data.session)load(data.session.user.id)})
  const {data:s}=supabase.auth.onAuthStateChange((_e,x)=>{setSession(x);if(x)load(x.user.id)});return()=>s.subscription.unsubscribe()},[])
+ useEffect(()=>{
+  if(!session?.user?.id) return
+  const channel=supabase
+    .channel('courier-orders-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>load(session.user.id))
+    .subscribe()
+
+  const fallback=setInterval(()=>load(session.user.id),10000)
+  return()=>{
+    clearInterval(fallback)
+    supabase.removeChannel(channel)
+  }
+ },[session?.user?.id])
+
  async function login(e){e.preventDefault();const {error}=await supabase.auth.signInWithPassword({email,password});if(error)setMsg(error.message)}
  async function load(uid){
-  const {data:j,error}=await supabase.from('orders').select('*,merchants(name),addresses(formatted_address)').eq('delivery_mode','guti').is('courier_id',null).in('status',['accepted','preparing','ready']).order('created_at')
-  if(error)setMsg(error.message); setJobs(j||[])
+  const {data:j,error}=await supabase.rpc('get_available_orders')
+  if(error)setMsg(error.message); else setMsg('')
+  setJobs((j||[]).map(x=>({
+    id:x.order_id,
+    total:x.total,
+    status:x.status,
+    merchants:{name:x.merchant_name},
+    addresses:{formatted_address:x.formatted_address}
+  })))
   const {data:m}=await supabase.from('orders').select('*,merchants(name),addresses(formatted_address)').eq('courier_id',uid).in('status',['assigned','picked_up','on_the_way']).order('created_at',{ascending:false})
   setMine(m||[])
  }
@@ -26,6 +47,9 @@ export default function Page(){
   {o.status==='picked_up'&&<button className="btn" onClick={()=>step(o.id,'on_the_way')}>Voy en camino</button>}
   {o.status==='on_the_way'&&<button className="btn" onClick={()=>step(o.id,'delivered')}>Entregado</button>}
  </div></div></div>)}
- <h2>Pedidos disponibles</h2><div className="grid">{jobs.map(j=><div className="card between" key={j.id}><div><b>{j.merchants?.name}</b><p className="muted">{j.addresses?.formatted_address}</p><b>Entrega $45</b></div><button className="btn" onClick={()=>claim(j.id)}>Tomar pedido</button></div>)}</div>
+ <h2>Pedidos disponibles</h2>
+ <p className="muted">Aquí aparecen los pedidos de negocios con reparto Guti después de que el negocio los acepta. Los pedidos de La Galera con reparto propio no aparecen aquí.</p>
+ {jobs.length===0&&<div className="card muted">No hay pedidos Guti disponibles por ahora. Esta pantalla se actualiza automáticamente.</div>}
+ <div className="grid">{jobs.map(j=><div className="card between" key={j.id}><div><b>{j.merchants?.name}</b><p className="muted">{j.addresses?.formatted_address}</p><b>Entrega $45</b></div><button className="btn" onClick={()=>claim(j.id)}>Tomar pedido</button></div>)}</div>
  </main>
 }

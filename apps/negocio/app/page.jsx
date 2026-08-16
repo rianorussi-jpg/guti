@@ -27,6 +27,25 @@ export default function Page(){
   setOrders(o||[]);setProducts(p||[])
  }
 
+ useEffect(()=>{
+  if(!merchant?.id) return
+  const channel=supabase
+    .channel(`merchant-orders-${merchant.id}`)
+    .on('postgres_changes',{
+      event:'*',
+      schema:'public',
+      table:'orders',
+      filter:`merchant_id=eq.${merchant.id}`
+    },()=>load(session.user.id))
+    .subscribe()
+
+  const fallback=setInterval(()=>load(session.user.id),12000)
+  return()=>{
+    clearInterval(fallback)
+    supabase.removeChannel(channel)
+  }
+ },[merchant?.id,session?.user?.id])
+
  async function login(e){e.preventDefault();const {error}=await supabase.auth.signInWithPassword({email,password});if(error)setMsg(error.message)}
  async function addProduct(e){e.preventDefault();if(!merchant)return
   const {error}=await supabase.from('products').insert({merchant_id:merchant.id,name,description:desc,price:Number(price),is_available:true})
@@ -40,7 +59,7 @@ export default function Page(){
  if(!session)return <main className="shell" style={{maxWidth:480}}><div className="brand">Guti.mx Negocios</div><h2>Acceso de negocio</h2><form className="card grid" onSubmit={login}><input type="email" placeholder="Correo" value={email} onChange={e=>setEmail(e.target.value)}/><input type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)}/><button className="btn">Entrar</button></form>{msg&&<p>{msg}</p>}</main>
 
  return <main className="shell">
-  <div className="topbar"><div><div className="brand">Guti.mx Negocios</div><span className="muted">{merchant?.name||'Cargando...'}</span></div><button className="btn secondary" onClick={()=>supabase.auth.signOut()}>Salir</button></div>
+  <div className="topbar"><div><div className="brand">Guti.mx Negocios</div><span className="muted">{merchant?.name||'Cargando...'}</span> <span className="pill" style={{marginLeft:8,background:'#e7f8ed',color:'#158c45'}}>● En vivo</span></div><button className="btn secondary" onClick={()=>supabase.auth.signOut()}>Salir</button></div>
   {msg&&<div className="card">{msg}</div>}
   {merchant&&<>
    <div className="grid cols4" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:20}}>
@@ -54,6 +73,8 @@ export default function Page(){
       {o.status==='pending'&&<><button className="btn" onClick={()=>status(o,'accepted')}>Aceptar</button><button className="btn secondary" onClick={()=>status(o,'cancelled')}>Rechazar</button></>}
       {o.status==='accepted'&&<button className="btn" onClick={()=>status(o,'preparing')}>Preparando</button>}
       {o.status==='preparing'&&<button className="btn" onClick={()=>status(o,'ready')}>Pedido listo</button>}
+      {merchant.delivery_mode==='merchant'&&o.status==='ready'&&<button className="btn" onClick={()=>status(o,'on_the_way')}>Salió a entrega</button>}
+      {merchant.delivery_mode==='merchant'&&o.status==='on_the_way'&&<button className="btn" onClick={()=>status(o,'delivered')}>Entregado</button>}
     </td></tr>)}
    </tbody></table></div>
    <div className="grid cols2" style={{gridTemplateColumns:'1fr 1.5fr'}}>
