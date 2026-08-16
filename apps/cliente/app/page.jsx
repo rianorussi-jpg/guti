@@ -12,10 +12,13 @@ export default function Page(){
   const [products,setProducts]=useState([])
   const [cart,setCart]=useState([])
   const [showCart,setShowCart]=useState(false)
-  const [activeOrder,setActiveOrder]=useState(null)
+  const [activeOrders,setActiveOrders]=useState([])
+  const [trackingOrderId,setTrackingOrderId]=useState(null)
   const [showTracking,setShowTracking]=useState(false)
   const [deliveredSuccess,setDeliveredSuccess]=useState(null)
   const [orderLoading,setOrderLoading]=useState(false)
+
+  const activeOrder = activeOrders.find(o=>o.id===trackingOrderId) || activeOrders[0] || null
   const [showAuth,setShowAuth]=useState(false)
   const [authMode,setAuthMode]=useState('login')
   const [email,setEmail]=useState('')
@@ -29,15 +32,15 @@ export default function Page(){
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
       setSession(data.session)
-      if(data.session?.user?.id) loadActiveOrder(data.session.user.id)
-      else setActiveOrder(null)
+      if(data.session?.user?.id) loadActiveOrders(data.session.user.id)
+      else setActiveOrders([])
       const key = data.session?.user?.id ? `guti-cart:${data.session.user.id}` : 'guti-cart:guest'
       try{ setCart(JSON.parse(localStorage.getItem(key)||'[]')) }catch{ setCart([]) }
     })
     const {data:sub}=supabase.auth.onAuthStateChange((_e,s)=>{
       setSession(s)
-      if(s?.user?.id) loadActiveOrder(s.user.id)
-      else setActiveOrder(null)
+      if(s?.user?.id) loadActiveOrders(s.user.id)
+      else setActiveOrders([])
       const key = s?.user?.id ? `guti-cart:${s.user.id}` : 'guti-cart:guest'
       try{ setCart(JSON.parse(localStorage.getItem(key)||'[]')) }catch{ setCart([]) }
     })
@@ -62,36 +65,36 @@ export default function Page(){
       },async(payload)=>{
         const next=payload.new
         if(next?.status==='delivered'){
-          setDeliveredSuccess(next)
+          const previous=activeOrders.find(o=>o.id===next.id)
+          setDeliveredSuccess(previous?{...previous,...next}:next)
+          setTrackingOrderId(next.id)
           setShowTracking(true)
-          if(activeOrder?.id===next.id){
-            setActiveOrder(prev=>prev?{...prev,...next}:prev)
-          }
+          setActiveOrders(prev=>prev.map(o=>o.id===next.id?{...o,...next}:o))
           return
         }
         if(next?.status==='cancelled'){
-          setActiveOrder(null)
-          setShowTracking(false)
+          setActiveOrders(prev=>prev.filter(o=>o.id!==next.id))
+          if(trackingOrderId===next.id) setShowTracking(false)
           return
         }
-        await loadActiveOrder(session.user.id)
+        await loadActiveOrders(session.user.id)
       })
       .on('postgres_changes',{
         event:'INSERT',
         schema:'public',
         table:'orders',
         filter:`customer_id=eq.${session.user.id}`
-      },()=>loadActiveOrder(session.user.id))
+      },()=>loadActiveOrders(session.user.id))
       .subscribe()
 
-    const fallback=setInterval(()=>loadActiveOrder(session.user.id),12000)
+    const fallback=setInterval(()=>loadActiveOrders(session.user.id),12000)
     return ()=>{
       clearInterval(fallback)
       supabase.removeChannel(channel)
     }
-  },[session?.user?.id,activeOrder?.id])
+  },[session?.user?.id,trackingOrderId])
 
-  async function loadActiveOrder(userId){
+  async function loadActiveOrders(userId){
     if(!userId) return
     setOrderLoading(true)
     const {data,error}=await supabase
@@ -101,12 +104,18 @@ export default function Page(){
       .neq('status','delivered')
       .neq('status','cancelled')
       .order('created_at',{ascending:false})
-      .limit(1)
-      .maybeSingle()
     setOrderLoading(false)
-    if(error){ console.error('active order',error); return }
-    setActiveOrder(data||null)
+    if(error){ console.error('active orders',error); return }
+
+    const rows=data||[]
+    setActiveOrders(rows)
+
+    setTrackingOrderId(prev=>{
+      if(prev && rows.some(o=>o.id===prev)) return prev
+      return rows[0]?.id || null
+    })
   }
+
 
   async function loadMerchants(){
     const {data,error}=await supabase.from('merchants').select('*').eq('is_active',true).order('name')
@@ -181,7 +190,7 @@ export default function Page(){
     }
   }
 
-  async function signOut(){ setActiveOrder(null); setShowTracking(false); setDeliveredSuccess(null); await supabase.auth.signOut() }
+  async function signOut(){ setActiveOrders([]); setTrackingOrderId(null); setShowTracking(false); setDeliveredSuccess(null); await supabase.auth.signOut() }
 
   async function checkout(){
     if(!session){setShowAuth(true);return}
@@ -212,7 +221,7 @@ export default function Page(){
     if(ierr){setMessage(ierr.message);return}
 
     setCart([]); setAddress(''); setNotes(''); setShowCart(false); setSelected(null)
-    await loadActiveOrder(session.user.id)
+    await loadActiveOrders(session.user.id)
     setShowTracking(false)
     setMessage('Pedido enviado. Puedes rastrearlo desde Inicio.')
   }
@@ -276,7 +285,8 @@ export default function Page(){
         <div className="between current-order-top">
           <button type="button" className="btn secondary" onClick={()=>{
             setDeliveredSuccess(null)
-            setActiveOrder(null)
+            setActiveOrders(prev=>prev.filter(o=>o.id!==delivered.id))
+            setTrackingOrderId(null)
             setShowTracking(false)
           }}>← Inicio</button>
           <div className="brand">Guti.mx</div>
@@ -297,7 +307,8 @@ export default function Page(){
 
           <button type="button" className="btn" style={{width:'100%',marginTop:18}} onClick={()=>{
             setDeliveredSuccess(null)
-            setActiveOrder(null)
+            setActiveOrders(prev=>prev.filter(o=>o.id!==delivered.id))
+            setTrackingOrderId(null)
             setShowTracking(false)
           }}>Volver al inicio</button>
         </section>
@@ -348,7 +359,7 @@ export default function Page(){
         </div>
 
         <p className="order-persist-note">Puedes volver al inicio y seguir usando Guti.mx. Tu pedido seguirá disponible en “Rastrear pedido” hasta que sea entregado.</p>
-        <button type="button" className="btn secondary" onClick={()=>loadActiveOrder(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
+        <button type="button" className="btn secondary" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
       </section>
     </main>
   }
@@ -434,17 +445,38 @@ export default function Page(){
     {showAuth&&AuthPanel()}
     <input placeholder="¿Qué quieres pedir hoy?" />
 
-    {activeOrder&&<section className="active-order-banner">
-      <div className="active-order-icon">{activeOrder.status==='on_the_way'?'🛵':activeOrder.status==='ready'?'🛍️':'🧡'}</div>
-      <div className="active-order-copy">
-        <small>PEDIDO EN CURSO</small>
-        <b>{activeOrder.merchants?.name||'Tu pedido'}</b>
-        <span>{activeOrder.status==='pending'?'Esperando aceptación':activeOrder.status==='accepted'?'Pedido aceptado':activeOrder.status==='preparing'?'Preparando':activeOrder.status==='ready'?'Pedido listo':activeOrder.status==='assigned'?'Repartidor asignado':activeOrder.status==='picked_up'?'Pedido recogido':'En camino'}</span>
+    {activeOrders.length>0&&<section className="orders-carousel-section">
+      <div className="between orders-carousel-head">
+        <div>
+          <small>PEDIDOS EN CURSO</small>
+          <b>{activeOrders.length===1?'Tienes 1 pedido activo':`Tienes ${activeOrders.length} pedidos activos`}</b>
+        </div>
+        {activeOrders.length>1&&<span>Desliza →</span>}
       </div>
-      <button type="button" className="btn track-btn" onClick={()=>setShowTracking(true)}>Rastrear pedido</button>
+
+      <div className="active-orders-carousel">
+        {activeOrders.map((order,index)=><article className="active-order-banner" key={order.id}>
+          <div className="active-order-number">{index+1}/{activeOrders.length}</div>
+          <div className="active-order-icon">{order.status==='on_the_way'?'🛵':order.status==='ready'?'🛍️':order.status==='preparing'?'👨‍🍳':'🧡'}</div>
+          <div className="active-order-copy">
+            <small>PEDIDO #{order.id.slice(0,8)}</small>
+            <b>{order.merchants?.name||'Tu pedido'}</b>
+            <span>{order.status==='pending'?'Esperando aceptación':order.status==='accepted'?'Pedido aceptado':order.status==='preparing'?'Preparando':order.status==='ready'?'Pedido listo':order.status==='assigned'?'Repartidor asignado':order.status==='picked_up'?'Pedido recogido':'En camino'}</span>
+          </div>
+          <button type="button" className="btn track-btn" onClick={()=>{
+            setTrackingOrderId(order.id)
+            setShowTracking(true)
+          }}>Rastrear pedido</button>
+        </article>)}
+      </div>
+
+      {activeOrders.length>1&&<div className="carousel-dots">
+        {activeOrders.map(o=><i key={o.id}/>)}
+      </div>}
     </section>}
 
-    <div className="grid" style={{gridTemplateColumns:'repeat(4,1fr)',margin:'20px 0'}}>{cats.map(x=><div className="card" key={x} style={{padding:12,textAlign:'center',fontSize:12}}>{x}</div>)}</div>
+
+<div className="grid" style={{gridTemplateColumns:'repeat(4,1fr)',margin:'20px 0'}}>{cats.map(x=><div className="card" key={x} style={{padding:12,textAlign:'center',fontSize:12}}>{x}</div>)}</div>
     <div className="card" style={{background:'linear-gradient(135deg,#f4510b,#ff7a18)',color:'#fff',marginBottom:22}}><span className="pill">GUTI PUNTOS</span><h2>Compra local y gana recompensas</h2><p>Acumula puntos y recibe beneficios.</p></div>
     <div className="between"><h2>Negocios</h2><span className="pill">Envío fijo $45</span></div>
     <div className="grid cols2" style={{gridTemplateColumns:'1fr 1fr'}}>
