@@ -9,3 +9,12 @@ a{text-decoration:none;color:inherit}button,input,select,textarea{font:inherit}
 input,select,textarea{width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff}
 table{width:100%;border-collapse:collapse;background:white;border-radius:16px;overflow:hidden}th,td{text-align:left;padding:13px;border-bottom:1px solid var(--line);font-size:14px}th{background:#fafafa}
 @media(max-width:700px){.shell{padding:14px}.desktop-only{display:none}.grid.cols4,.grid.cols3,.grid.cols2{grid-template-columns:1fr!important}}
+
+.auth-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin:14px 0;display:grid;gap:10px;box-shadow:0 12px 30px #0000000b}
+.auth-tabs{display:grid;grid-template-columns:1fr 1fr;background:#f4f4f4;border-radius:12px;padding:4px;gap:4px}
+.auth-tab{border:0;background:transparent;border-radius:9px;padding:10px;font-weight:700;cursor:pointer;color:#6d6d6d}
+.auth-tab.active{background:#fff;color:var(--orange);box-shadow:0 2px 8px #00000010}
+.auth-main{width:100%;margin-top:2px}
+.auth-main:disabled{opacity:.65;cursor:not-allowed}
+.auth-switch{text-align:center;color:var(--muted);font-size:13px;padding-top:4px}
+.auth-switch button{border:0;background:transparent;color:var(--orange);font-weight:800;cursor:pointer;padding:4px}

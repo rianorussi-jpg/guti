@@ -12,8 +12,11 @@ export default function Page(){
   const [products,setProducts]=useState([])
   const [cart,setCart]=useState([])
   const [showAuth,setShowAuth]=useState(false)
+  const [authMode,setAuthMode]=useState('login')
   const [email,setEmail]=useState('')
   const [password,setPassword]=useState('')
+  const [fullName,setFullName]=useState('')
+  const [authBusy,setAuthBusy]=useState(false)
   const [message,setMessage]=useState('')
   const [address,setAddress]=useState('')
   const [notes,setNotes]=useState('')
@@ -53,15 +56,40 @@ export default function Page(){
   const total=subtotal+delivery
 
   async function signIn(e){
-    e.preventDefault(); setMessage('')
+    e?.preventDefault()
+    if(authBusy) return
+    if(!email.trim()) return setMessage('Escribe tu correo.')
+    if(!password) return setMessage('Escribe tu contraseña.')
+    setAuthBusy(true); setMessage('')
     const {error}=await supabase.auth.signInWithPassword({email,password})
-    if(error) setMessage(error.message); else setShowAuth(false)
+    setAuthBusy(false)
+    if(error) setMessage(error.message)
+    else { setShowAuth(false); setAuthMode('login') }
   }
 
-  async function signUp(){
-    setMessage('')
-    const {error}=await supabase.auth.signUp({email,password})
-    setMessage(error?error.message:'Cuenta creada. Revisa tu correo si Supabase requiere confirmación.')
+  async function signUp(e){
+    e?.preventDefault()
+    if(authBusy) return
+    if(!fullName.trim()) return setMessage('Escribe tu nombre.')
+    if(!email.trim()) return setMessage('Escribe tu correo.')
+    if(password.length < 6) return setMessage('La contraseña debe tener al menos 6 caracteres.')
+    setAuthBusy(true); setMessage('')
+    const {data,error}=await supabase.auth.signUp({
+      email,
+      password,
+      options:{ data:{ full_name: fullName.trim() } }
+    })
+    setAuthBusy(false)
+    if(error) return setMessage(error.message)
+
+    if(data?.session){
+      setMessage('Cuenta creada correctamente. Ya puedes hacer tu pedido.')
+      setShowAuth(false)
+      setAuthMode('login')
+    }else{
+      setMessage('Cuenta creada. Revisa tu correo para confirmar la cuenta y después inicia sesión.')
+      setAuthMode('login')
+    }
   }
 
   async function signOut(){ await supabase.auth.signOut() }
@@ -98,6 +126,55 @@ export default function Page(){
     setMessage(`Pedido ${order.id.slice(0,8)} creado. El negocio debe aceptarlo.`)
   }
 
+  function AuthPanel(){
+    return <div className="auth-card">
+      <div className="auth-tabs">
+        <button type="button" className={authMode==='login'?'auth-tab active':'auth-tab'} onClick={()=>{setAuthMode('login');setMessage('')}}>Entrar</button>
+        <button type="button" className={authMode==='register'?'auth-tab active':'auth-tab'} onClick={()=>{setAuthMode('register');setMessage('')}}>Crear cuenta</button>
+      </div>
+
+      {authMode==='register' && <input
+        type="text"
+        placeholder="Tu nombre"
+        value={fullName}
+        onChange={e=>setFullName(e.target.value)}
+        autoComplete="name"
+      />}
+
+      <input
+        type="email"
+        placeholder="Correo"
+        value={email}
+        onChange={e=>setEmail(e.target.value)}
+        autoComplete="email"
+      />
+
+      <input
+        type="password"
+        placeholder="Contraseña"
+        value={password}
+        onChange={e=>setPassword(e.target.value)}
+        autoComplete={authMode==='login'?'current-password':'new-password'}
+      />
+
+      {authMode==='login'
+        ? <button type="button" className="btn auth-main" disabled={authBusy} onClick={signIn}>
+            {authBusy?'Entrando...':'Entrar'}
+          </button>
+        : <button type="button" className="btn auth-main" disabled={authBusy} onClick={signUp}>
+            {authBusy?'Creando...':'Crear mi cuenta'}
+          </button>
+      }
+
+      <div className="auth-switch">
+        {authMode==='login'
+          ? <>¿No tienes cuenta? <button type="button" onClick={()=>{setAuthMode('register');setMessage('')}}>Crear cuenta</button></>
+          : <>¿Ya tienes cuenta? <button type="button" onClick={()=>{setAuthMode('login');setMessage('')}}>Entrar</button></>
+        }
+      </div>
+    </div>
+  }
+
   if(selected){
     return <main className="shell" style={{maxWidth:560}}>
       <div className="topbar"><button className="btn secondary" onClick={()=>setSelected(null)}>← Volver</button><div className="brand">{selected.name}</div><span/></div>
@@ -114,21 +191,17 @@ export default function Page(){
         <button className="btn" style={{width:'100%',marginTop:10}} onClick={checkout}>Confirmar pedido · Efectivo · Envío $45</button>
       </div>}
       {message&&<p className="card">{message}</p>}
-      {showAuth&&<div className="card" style={{marginTop:16}}>
-        <h3>Inicia sesión para pedir</h3>
-        <form onSubmit={signIn} className="grid"><input type="email" placeholder="Correo" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="btn">Entrar</button></form>
-        <button className="btn secondary" style={{marginTop:8}} onClick={signUp}>Crear cuenta</button>
-      </div>}
+      {showAuth&&<AuthPanel/>}
     </main>
   }
 
   return <main className="shell" style={{maxWidth:560}}>
     <div className="topbar">
       <div><div className="muted" style={{fontSize:12}}>Entregar en</div><b>Gutiérrez Zamora, Ver.</b></div>
-      {session?<button className="btn secondary" onClick={signOut}>Salir</button>:<button className="btn secondary" onClick={()=>setShowAuth(!showAuth)}>Entrar</button>}
+      {session?<button className="btn secondary" onClick={signOut}>Salir</button>:<button type="button" className="btn secondary" onClick={()=>{setAuthMode('login');setShowAuth(!showAuth)}}>Entrar</button>}
     </div>
     <div style={{textAlign:'center',margin:'22px 0'}}><div className="brand" style={{fontSize:48,fontStyle:'italic'}}>Guti.mx</div><div className="muted">Lo que necesites, te lo llevamos.</div></div>
-    {showAuth&&<div className="card" style={{marginBottom:16}}><form onSubmit={signIn} className="grid"><input type="email" placeholder="Correo" value={email} onChange={e=>setEmail(e.target.value)} required/><input type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="btn">Entrar</button></form><button className="btn secondary" style={{marginTop:8}} onClick={signUp}>Crear cuenta</button></div>}
+    {showAuth&&<AuthPanel/>}
     <input placeholder="¿Qué quieres pedir hoy?" />
     <div className="grid" style={{gridTemplateColumns:'repeat(4,1fr)',margin:'20px 0'}}>{cats.map(x=><div className="card" key={x} style={{padding:12,textAlign:'center',fontSize:12}}>{x}</div>)}</div>
     <div className="card" style={{background:'linear-gradient(135deg,#f4510b,#ff7a18)',color:'#fff',marginBottom:22}}><span className="pill">GUTI PUNTOS</span><h2>Compra local y gana recompensas</h2><p>Acumula puntos y recibe beneficios.</p></div>
