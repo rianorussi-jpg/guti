@@ -102,6 +102,20 @@ export default function Page(){
   },[])
 
   useEffect(()=>{
+    try{
+      const raw=sessionStorage.getItem('guti-clip-payment-result')
+      if(!raw)return
+      const result=JSON.parse(raw)
+      if(result?.order_id){
+        setTrackingOrderId(result.order_id)
+        setShowTracking(true)
+        setTab('home')
+      }
+      sessionStorage.removeItem('guti-clip-payment-result')
+    }catch{}
+  },[])
+
+  useEffect(()=>{
     const key=session?.user?.id?`guti-cart:${session.user.id}`:'guti-cart:guest'
     try{
       const saved=JSON.parse(localStorage.getItem(key)||'[]')
@@ -417,6 +431,31 @@ export default function Page(){
     setPaymentMethod('cash')
     setShowCart(false)
     setShowCheckout(true)
+  }
+
+  function goToClipCardPayment(){
+    const group=cartGroups.find(g=>g.merchantId===checkoutMerchantId)
+    if(!group||!selectedAddress)return
+    sessionStorage.setItem('guti-clip-checkout',JSON.stringify({
+      merchant_id:group.merchantId,
+      merchant_name:group.merchant?.name||'Negocio',
+      merchant_logo:group.merchant?.logo_url||'',
+      address_id:selectedAddress.id,
+      address_label:selectedAddress.label||'Dirección',
+      address_text:selectedAddress.formatted_address||'',
+      notes:checkoutNotes,
+      subtotal:group.subtotal,
+      delivery_fee:45,
+      total:group.total,
+      items:group.items.map(x=>({
+        product_id:x.id,
+        name:x.name,
+        quantity:x.qty,
+        price:Number(x.price),
+        selected_options:x.selected_options||[]
+      }))
+    }))
+    window.location.href='/pago/tarjeta'
   }
 
   async function createOrderFromCheckout(){
@@ -735,10 +774,16 @@ export default function Page(){
               {m.coming?<em>{m.id==='guti_balance'?'SIN SALDO':'PRÓXIMAMENTE'}</em>:<span className="payment-check">{paymentMethod===m.id?<Check/>:null}</span>}
             </button>)}
           </div>
-          {paymentMethod==='card'&&<CardPaymentBox key={`${checkoutMerchantId}-${checkoutStep}`} onToken={(token)=>{setCardToken(token);setCardReady(true);setCardError('')}} onReset={()=>{setCardToken(null);setCardReady(false)}} error={cardError}/>} 
+          {paymentMethod==='card'&&<section className="clip-dedicated-choice">
+            <div className="clip-dedicated-icon">💳</div>
+            <div><b>Pago seguro con Clip</b><small>La tarjeta se captura en una pantalla dedicada y segura.</small></div>
+            <button type="button" onClick={goToClipCardPayment}>Continuar con Clip <ArrowRight/></button>
+          </section>} 
           <div className="checkout-nav-buttons">
             <button className="checkout-back" onClick={()=>setCheckoutStep(1)}><ArrowLeft/>Atrás</button>
-            <button className="checkout-next" disabled={paymentMethod==='card'&&!cardReady} onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>
+            {paymentMethod==='card'
+              ? <button className="checkout-next" onClick={goToClipCardPayment}>Continuar con Clip <ArrowRight/></button>
+              : <button className="checkout-next" onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>}
           </div>
         </section>}
 
