@@ -98,3 +98,30 @@
 /* Guti Admin v3.6 */
 .finance-mini-kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.finance-mini-kpis article{background:#fff;border:1px solid #e8e8e8;border-radius:14px;padding:14px}.finance-mini-kpis small{color:#777;font-size:10px}.finance-mini-kpis b{display:block;font-size:22px;margin-top:5px}.deposit-admin-actions{display:flex;gap:5px}.deposit-admin-actions button{white-space:nowrap}.danger-mini{background:#fff0f0!important;color:#b22!important}.cash-admin-table{margin-top:14px}
 @media(max-width:600px){.finance-mini-kpis{grid-template-columns:1fr}.deposit-admin-actions{display:grid}}
+
+/* Guti Admin v3.6.2 — restore cards layout fix */
+.merchant-cards,.courier-cards{align-items:stretch}
+.merchant-cards article,.courier-cards article{
+  width:100%;min-width:0;grid-template-columns:48px minmax(0,1fr) auto!important;
+  gap:10px!important;align-items:center!important;overflow:hidden
+}
+.merchant-cards article>.entity-avatar,.courier-cards article>.entity-avatar{
+  grid-row:auto!important;width:48px!important;height:48px!important;min-width:48px!important;
+  border-radius:12px!important;overflow:hidden!important;background:#fff0e8!important;color:#f4510b!important;
+  display:grid!important;place-items:center!important
+}
+.merchant-cards article>.entity-copy,.courier-cards article>.entity-copy{
+  grid-row:auto!important;width:auto!important;height:auto!important;min-width:0!important;max-width:100%!important;
+  display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;
+  background:transparent!important;color:#171717!important;border-radius:0!important;overflow:hidden!important;font-weight:400!important
+}
+.entity-copy b{width:100%;min-width:0;font-size:13px!important;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entity-copy small,.entity-copy em{width:100%;min-width:0;display:block;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.entity-status{justify-self:end;white-space:nowrap}
+.entity-avatar img{width:100%!important;height:100%!important;object-fit:cover!important;display:block}
+@media(max-width:620px){
+  .merchant-cards article,.courier-cards article{grid-template-columns:44px minmax(0,1fr)!important;padding:13px!important}
+  .merchant-cards article>.entity-avatar,.courier-cards article>.entity-avatar{width:44px!important;height:44px!important;min-width:44px!important}
+  .entity-status{grid-column:2;justify-self:start;margin-top:3px}
+  .entity-copy b{white-space:normal;overflow-wrap:anywhere}
+}

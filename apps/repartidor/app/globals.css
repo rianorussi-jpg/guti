@@ -22,3 +22,12 @@
 .settlement-courier-list{display:grid;gap:8px}.settlement-courier-list>article{background:#fff;border:1px solid #e8e8e8;border-radius:13px;padding:11px;display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}.settlement-courier-list b{font-size:9px}.settlement-courier-list small{display:block;font-size:7px;color:#888}.settlement-courier-list strong{font-size:12px}.settlement-courier-list span{font-size:7px;font-weight:900;padding:5px 7px;border-radius:99px;background:#fff7e1;color:#926000}.settlement-courier-list span.paid{background:#e8f7ed;color:#17743e}
 .courier-drawer-backdrop{position:fixed;inset:0;background:#0007;z-index:100}.courier-drawer{position:absolute;right:0;top:0;height:100%;width:min(390px,92vw);background:#fff;padding:15px;overflow:auto}.courier-drawer header{display:flex;justify-content:space-between}.courier-drawer header small{color:#f4510b;font-size:7px;font-weight:900}.courier-drawer header h2{margin:2px 0}.courier-drawer header button{border:0;background:#eee;border-radius:50%;width:34px;height:34px;font-size:20px}.drawer-read,.drawer-enable{width:100%;border:0;border-radius:9px;padding:9px;margin:10px 0;font-size:8px;font-weight:900}.drawer-read{background:#f3f3f3}.drawer-enable{background:#171717;color:#fff}.courier-drawer>div>article{display:grid;grid-template-columns:26px 1fr;gap:7px;border:1px solid #eee;border-radius:11px;padding:9px;margin-bottom:6px}.courier-drawer>div>article.unread{background:#fff8f4;border-color:#ffdbc9}.courier-drawer>div>article>svg{width:15px;color:#f4510b}.courier-drawer article b{font-size:9px}.courier-drawer article p{font-size:8px;color:#777;margin:2px 0}.courier-drawer article small{font-size:6px;color:#aaa}
 @media(max-width:600px){.cash-summary-grid{grid-template-columns:1fr}.deposit-form{grid-template-columns:1fr}.settlement-courier-list>article{grid-template-columns:1fr auto}.settlement-courier-list span{grid-column:1/-1;justify-self:start}}
+
+/* Repartidor v3.6.2 — Pagos visible */
+.courier-bottom-nav-v362{grid-template-columns:repeat(4,1fr)!important}
+.payment-summary-v362{grid-template-columns:1fr 1fr!important}
+@media(max-width:500px){
+  .courier-bottom-nav-v362 button{font-size:7px}
+  .courier-bottom-nav-v362 button svg{width:17px}
+  .payment-summary-v362{grid-template-columns:1fr 1fr!important}
+}

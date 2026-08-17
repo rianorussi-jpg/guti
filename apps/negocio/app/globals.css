@@ -158,3 +158,30 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}svg{width:20px;h
 .settlement-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.settlement-summary-grid article{background:#fff;border:1px solid #e8e8e8;border-radius:14px;padding:13px;display:flex;gap:9px;align-items:center}.settlement-summary-grid article>span{width:40px;height:40px;border-radius:11px;background:#fff1ea;color:#f4510b;display:grid;place-items:center}.settlement-summary-grid small{font-size:7px;color:#888}.settlement-summary-grid b{display:block;font-size:16px}
 .settlement-list{display:grid}.settlement-list>article{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border-top:1px solid #eee;padding:12px 0}.settlement-list b{font-size:9px}.settlement-list small{display:block;color:#888;font-size:7px;margin-top:3px}.settlement-list strong{font-size:12px}.settlement-status{font-size:7px;font-weight:900;padding:5px 7px;border-radius:99px;background:#fff1db;color:#986000}.settlement-status.paid{background:#e8f7ed;color:#187740}
 @media(max-width:560px){.settlement-summary-grid{grid-template-columns:1fr}.settlement-list>article{grid-template-columns:1fr auto}.settlement-status{grid-column:1/-1;justify-self:start}}
+
+/* Guti Negocios v3.6.2 — Pagos siempre visible */
+.sidebar{overflow:hidden}
+.sidebar nav{
+  overflow-y:auto;
+  overflow-x:hidden;
+  min-height:0;
+  padding-right:2px;
+  scrollbar-width:thin;
+}
+.sidebar nav button:nth-child(6){
+  background:#2b211d;
+  color:#ff8a50;
+  border:1px solid #4a3025;
+}
+.sidebar nav button:nth-child(6).active{
+  background:#f4510b;
+  color:#fff;
+  border-color:#f4510b;
+}
+.sidebar-bottom{flex:0 0 auto}
+@media(max-height:720px){
+  .sidebar{padding-top:12px;padding-bottom:10px}
+  .sidebar-brand{padding-bottom:10px}
+  .merchant-mini{margin-bottom:10px}
+  .sidebar nav button{padding:9px 10px}
+}

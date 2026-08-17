@@ -260,8 +260,20 @@ export default function Page(){
           </article>)}
           {!cashDays.length&&<div className="courier-empty"><Wallet/><b>No tienes cobros en efectivo</b><span>Cuando entregues un pedido en efectivo aparecerá aquí.</span></div>}</div>
         </section>
-        <section className="courier-section"><div className="courier-section-head"><div><small>LUNES</small><h2>Pagos semanales</h2></div></div>
-          <div className="settlement-courier-list">{settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} entregas no efectivo · {s.bank_name||'Banco sin registrar'} {s.bank_clabe?`••••${s.bank_clabe.slice(-4)}`:''}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={s.status}>{s.status==='paid'?'Pagado':'Pendiente'}</span></article>)}{!settlements.length&&<div className="courier-empty"><CalendarDays/><b>Aún no hay liquidaciones</b><span>Los pagos de tarjeta/transferencia se agrupan semanalmente.</span></div>}</div>
+      </>}
+
+      {tab==='payments'&&<>
+        <section className="courier-hero"><div><small>PAGOS GUTI</small><h1>Mis pagos semanales</h1><p>Las entregas pagadas con tarjeta, transferencia o Guti Balance se liquidan los lunes a tu cuenta bancaria.</p></div></section>
+        <section className="cash-summary-grid payment-summary-v362">
+          <article><span><Wallet/></span><div><small>Pendiente</small><b>${settlements.filter(s=>s.status==='pending').reduce((a,s)=>a+Number(s.amount||0),0).toFixed(2)}</b></div></article>
+          <article><span><CheckCircle2/></span><div><small>Pagado</small><b>${settlements.filter(s=>s.status==='paid').reduce((a,s)=>a+Number(s.amount||0),0).toFixed(2)}</b></div></article>
+        </section>
+        <section className="courier-section">
+          <div className="courier-section-head"><div><small>CADA LUNES</small><h2>Liquidaciones</h2></div></div>
+          <div className="settlement-courier-list">
+            {settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} entregas no efectivo · {s.bank_name||'Banco sin registrar'} {s.bank_clabe?`••••${s.bank_clabe.slice(-4)}`:''}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={s.status}>{s.status==='paid'?'Pagado':'Pendiente'}</span></article>)}
+            {!settlements.length&&<div className="courier-empty"><CalendarDays/><b>Aún no hay liquidaciones</b><span>Cuando cierre una semana aparecerá aquí tu pago del lunes.</span></div>}
+          </div>
         </section>
       </>}
 
@@ -273,9 +285,10 @@ export default function Page(){
       </>}
     </section>
 
-    <nav className="courier-bottom-nav">
+    <nav className="courier-bottom-nav courier-bottom-nav-v362">
       <button className={tab==='home'?'active':''} onClick={()=>setTab('home')}><Bike/><span>Pedidos</span>{jobs.length>0&&<i>{jobs.length}</i>}</button>
       <button className={tab==='cash'?'active':''} onClick={()=>setTab('cash')}><Wallet/><span>Efectivo</span>{cashDays.reduce((s,d)=>s+Number(d.amount_due||0),0)>0&&<i>$</i>}</button>
+      <button className={tab==='payments'?'active':''} onClick={()=>setTab('payments')}><Landmark/><span>Pagos</span>{settlements.filter(s=>s.status==='pending').length>0&&<i>{settlements.filter(s=>s.status==='pending').length}</i>}</button>
       <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History/><span>Historial</span></button>
     </nav>
 
