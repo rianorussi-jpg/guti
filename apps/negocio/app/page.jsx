@@ -8,7 +8,7 @@ import {
   Camera, MapPin, Phone, FileText, BadgePercent, AlertCircle, ChevronDown,
   CircleDollarSign, Boxes, Tag, ListPlus, CheckCircle2, XCircle, Loader2,
   RefreshCw, Menu, ArrowLeft, Copy, ExternalLink, Volume2, VolumeX, Timer, PauseCircle,
-  PlayCircle, Percent, Sparkles, AlarmClock, Layers3
+  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 
@@ -59,6 +59,9 @@ export default function Page(){
   const [selectedOrder,setSelectedOrder]=useState(null)
   const [orderItems,setOrderItems]=useState([])
   const [newOrderIds,setNewOrderIds]=useState([])
+  const [notifications,setNotifications]=useState([])
+  const [showNotifications,setShowNotifications]=useState(false)
+  const [settlements,setSettlements]=useState([])
   const [latestNewOrder,setLatestNewOrder]=useState(null)
   const [soundEnabled,setSoundEnabled]=useState(false)
   const [showCategoryCreator,setShowCategoryCreator]=useState(false)
@@ -163,6 +166,28 @@ export default function Page(){
     const fallback=setInterval(refreshOperations,30000)
     return()=>{clearInterval(fallback);supabase.removeChannel(channel)}
   },[merchant?.id,session?.user?.id])
+
+  async function loadNotifications(uid){
+    const {data}=await supabase.from('notifications').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(40)
+    setNotifications(data||[])
+  }
+
+  async function markNotificationsRead(){
+    if(!session?.user?.id)return
+    await supabase.from('notifications').update({read_at:new Date().toISOString()}).eq('user_id',session.user.id).is('read_at',null)
+    await loadNotifications(session.user.id)
+  }
+
+  async function enableBusinessNotifications(){
+    if(!('Notification' in window))return setMsg('Este navegador no permite notificaciones.')
+    const p=await Notification.requestPermission()
+    setMsg(p==='granted'?'Avisos del navegador activados.':'No se activaron los avisos.')
+  }
+
+  async function loadSettlements(merchantId){
+    const {data}=await supabase.from('weekly_settlements').select('*').eq('merchant_id',merchantId).order('week_start',{ascending:false}).limit(24)
+    setSettlements(data||[])
+  }
 
   async function loadAll(uid){
     setBusy(true);setMsg('')
@@ -547,6 +572,7 @@ export default function Page(){
     ['catalog','Catálogo',PackageSearch],
     ['appearance','Mi negocio',Store],
     ['hours','Horarios',Clock3],
+    ['payments','Pagos',Wallet],
     ['settings','Configuración',Settings]
   ]
 
@@ -591,7 +617,8 @@ export default function Page(){
         </div>
         <div className="topbar-actions">
           <button className={`sound-toggle ${soundEnabled?'on':''}`} onClick={toggleSound} title="Sonido de pedidos">{soundEnabled?<Volume2/>:<VolumeX/>}</button>
-          <button className={`order-live ${pendingCount?'has-new':''}`} onClick={()=>setTab('orders')}><Bell/>{pendingCount>0&&<span>{pendingCount}</span>}</button>
+          <button className={`notify-center-btn ${notifications.some(n=>!n.read_at)?'has-new':''}`} onClick={()=>setShowNotifications(true)}><Bell/>{notifications.filter(n=>!n.read_at).length>0&&<span>{notifications.filter(n=>!n.read_at).length}</span>}</button>
+          <button className={`order-live ${pendingCount?'has-new':''}`} onClick={()=>setTab('orders')}><ReceiptText/>{pendingCount>0&&<span>{pendingCount}</span>}</button>
           <button className={`store-switch ${merchant?.accepts_orders?'on':'off'}`} onClick={async()=>{
             const manualPause=!merchantForm.manual_pause
             const {error}=await supabase.from('merchants').update({manual_pause:manualPause}).eq('id',merchant.id)
@@ -775,6 +802,21 @@ export default function Page(){
           </section>
         </>}
 
+        {tab==='payments'&&<>
+          <section className="page-intro"><div><small>LIQUIDACIONES GUTI</small><h2>Pagos semanales</h2><p>Guti libera las liquidaciones los lunes a la cuenta bancaria registrada.</p></div><button className="secondary-btn" onClick={enableBusinessNotifications}><Bell/>Activar avisos</button></section>
+          <div className="settlement-summary-grid">
+            <article><span><Wallet/></span><div><small>Pendiente de pago</small><b>${settlements.filter(s=>s.status==='pending').reduce((a,s)=>a+Number(s.amount||0),0).toFixed(2)}</b></div></article>
+            <article><span><CheckCheck/></span><div><small>Pagado históricamente</small><b>${settlements.filter(s=>s.status==='paid').reduce((a,s)=>a+Number(s.amount||0),0).toFixed(2)}</b></div></article>
+          </div>
+          <section className="panel">
+            <div className="panel-head"><div><small>HISTORIAL</small><h3>Liquidaciones</h3></div></div>
+            <div className="settlement-list">
+              {settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} pedidos · {s.bank_name||'Banco sin registrar'} · {s.bank_clabe?`•••• ${s.bank_clabe.slice(-4)}`:'Sin CLABE'}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={`settlement-status ${s.status}`}>{s.status==='paid'?'Pagado':'Pendiente'}</span></article>)}
+              {!settlements.length&&<Empty icon={Wallet} title="Aún no hay liquidaciones" text="Al cerrar tu primera semana aparecerá aquí el pago correspondiente."/>}
+            </div>
+          </section>
+        </>}
+
         {tab==='settings'&&<>
           <section className="page-intro"><div><small>OPERACIÓN</small><h2>Configuración</h2><p>Controla cómo recibe y entrega pedidos tu negocio.</p></div><button className="primary-btn" onClick={saveMerchant}><Save/>Guardar</button></section>
           <div className="settings-grid">
@@ -826,6 +868,13 @@ export default function Page(){
       <button onClick={()=>{setTab('orders');setLatestNewOrder(null)}}>Ver pedido</button>
       <button className="alert-close" onClick={()=>setLatestNewOrder(null)}><X/></button>
     </div>}
+
+    {showNotifications&&<div className="notification-drawer-backdrop" onClick={()=>setShowNotifications(false)}><aside className="notification-drawer" onClick={e=>e.stopPropagation()}>
+      <header><div><small>AVISOS GUTI</small><h2>Notificaciones</h2></div><button onClick={()=>setShowNotifications(false)}><X/></button></header>
+      <button className="mark-read" onClick={markNotificationsRead}><CheckCheck/>Marcar todo leído</button>
+      <div className="notification-list">{notifications.map(n=><article className={!n.read_at?'unread':''} key={n.id}><span><Bell/></span><div><b>{n.title}</b><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString('es-MX')}</small></div></article>)}{!notifications.length&&<p className="empty-notifications">Todavía no tienes avisos.</p>}</div>
+      <button className="enable-notifs" onClick={enableBusinessNotifications}>Activar avisos del navegador</button>
+    </aside></div>}
 
     {selectedOrder&&<OrderModal order={selectedOrder} items={orderItems} onClose={()=>setSelectedOrder(null)} onStatus={status} onAccept={acceptOrderWithDelivery} merchant={merchant}/>}
     {showProduct&&ProductModal()}

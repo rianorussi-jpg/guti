@@ -12,7 +12,7 @@ export async function POST(request){
   if(authError)return fail(authError.message)
   createdUserId=authData.user.id
   const {error:pError}=await admin.from('profiles').upsert({id:createdUserId,full_name:fullName,phone,role:'courier'},{onConflict:'id'});if(pError)throw pError
-  const {error:cError}=await admin.from('courier_profiles').upsert({user_id:createdUserId,is_online:false,is_approved:true,vehicle_type:String(b.vehicle_type||'Moto'),rating:5,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(cError)throw cError
+  const {error:cError}=await admin.from('courier_profiles').upsert({user_id:createdUserId,is_online:false,is_approved:true,vehicle_type:String(b.vehicle_type||'Moto'),rating:5,bank_name:String(b.bank_name||'').trim()||null,bank_account_holder:String(b.bank_account_holder||'').trim()||null,bank_clabe:String(b.bank_clabe||'').replace(/\D/g,'').slice(0,18)||null,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(cError)throw cError
   return NextResponse.json({ok:true,courier:{user_id:createdUserId,full_name:fullName,email,phone,vehicle_type:String(b.vehicle_type||'Moto')}})
  }catch(e){
   try{if(createdUserId){const admin=getAdminClient();await admin.auth.admin.deleteUser(createdUserId)}}catch{}

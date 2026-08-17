@@ -383,3 +383,35 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
   from{width:0}
   to{width:100%}
 }
+
+/* Cliente v3.4.1 — categorías reales + precio promo */
+.merchant-products-v341{padding:18px 14px 110px}
+.merchant-category-section-v341{margin-top:22px}
+.merchant-category-heading-v341{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.merchant-category-heading-v341 h2{font-size:17px;margin:0}
+.merchant-category-heading-v341 span{min-width:24px;height:24px;padding:0 7px;border-radius:99px;background:#f3f3f3;color:#777;font-size:8px;font-weight:900;display:grid;place-items:center}
+.merchant-products-list-v341{display:grid;gap:9px}
+.merchant-product-card-v341{border:1px solid #e9e9e9;border-radius:15px;background:#fff;padding:11px;display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:10px;align-items:center}
+.merchant-product-copy-v341{min-width:0}
+.merchant-product-copy-v341 h3{font-size:13px;margin:0 0 4px}
+.merchant-product-copy-v341 p{font-size:8px;color:#777;line-height:1.45;margin:0 0 8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.merchant-product-price-v341{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.merchant-product-price-v341 strong{font-size:14px;color:#171717}
+.merchant-product-price-v341 del{font-size:10px;color:#999}
+.merchant-product-price-v341 span{font-size:6px;font-weight:900;letter-spacing:.5px;background:#eaf8ef;color:#168347;border-radius:99px;padding:4px 6px}
+.merchant-product-image-v341{width:92px;height:92px;border-radius:12px;background:#f3f3f3;position:relative;overflow:hidden;display:grid;place-items:center;color:#aaa}
+.merchant-product-image-v341>img{width:100%;height:100%;object-fit:cover}
+.merchant-product-image-v341>svg{width:26px}
+.merchant-product-image-v341>button{position:absolute;right:6px;bottom:6px;width:29px;height:29px;border:0;border-radius:50%;background:var(--orange);color:#fff;display:grid;place-items:center;box-shadow:0 5px 14px #f4510b44}
+.merchant-product-image-v341>button svg{width:14px}
+@media(min-width:720px){
+  .merchant-products-list-v341{grid-template-columns:1fr 1fr}
+}
+
+/* Guti Cliente v3.6 */
+.support-btn-v36{
+  min-height:38px;border:1px solid #e8e8e8;background:#fff;border-radius:12px;
+  padding:0 9px;display:flex;align-items:center;gap:5px;color:#f4510b;font-size:8px;font-weight:900
+}
+.support-btn-v36 svg{width:16px;height:16px}
+@media(max-width:420px){.support-btn-v36 span{display:none}.support-btn-v36{width:38px;padding:0;justify-content:center}}

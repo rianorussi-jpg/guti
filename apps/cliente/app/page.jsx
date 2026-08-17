@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
-  Bell, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
+  Headphones, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
   IceCreamBowl, Grid2X2, Store, Star, Clock3, ArrowRight, ArrowLeft,
   Plus, Minus, Trash2, X, WalletCards, Gift, Heart, MapPinned, LogOut,
   ChevronRight, LocateFixed, Check, Navigation, BadgePercent
@@ -44,6 +44,7 @@ export default function Page(){
   const [merchants,setMerchants]=useState([])
   const [selectedMerchant,setSelectedMerchant]=useState(null)
   const [products,setProducts]=useState([])
+  const [categories,setCategories]=useState([])
   const [merchantLoading,setMerchantLoading]=useState(false)
 
   const [cart,setCart]=useState([])
@@ -69,6 +70,7 @@ export default function Page(){
   const [query,setQuery]=useState('')
   const [category,setCategory]=useState('all')
   const [message,setMessage]=useState('')
+  const [lastNotification,setLastNotification]=useState(null)
 
   const [showAuth,setShowAuth]=useState(false)
   const [authMode,setAuthMode]=useState('login')
@@ -100,6 +102,32 @@ export default function Page(){
     loadMerchants()
     return ()=>sub.subscription.unsubscribe()
   },[])
+
+  useEffect(()=>{
+    if(!session?.user?.id)return
+    const uid=session.user.id
+    const channel=supabase.channel(`client-notifications-${uid}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${uid}`},payload=>{
+        const n=payload.new
+        setLastNotification(n)
+        setMessage(`${n.title}${n.body?`: ${n.body}`:''}`)
+        if(typeof window!=='undefined'&&'Notification' in window&&Notification.permission==='granted'){
+          try{new Notification(n.title,{body:n.body||'',icon:'/brand/guti-logo.svg',tag:n.dedupe_key||n.id})}catch{}
+        }
+      }).subscribe()
+    return()=>supabase.removeChannel(channel)
+  },[session?.user?.id])
+
+  async function enableClientNotifications(){
+    if(!('Notification' in window))return setMessage('Este navegador no permite notificaciones.')
+    const permission=await Notification.requestPermission()
+    setMessage(permission==='granted'?'Avisos de Guti activados.':'No se activaron las notificaciones.')
+  }
+
+  function openSupport(){
+    const text=encodeURIComponent('Hola Guti, necesito ayuda con mi pedido.')
+    window.open(`https://wa.me/525623449135?text=${text}`,'_blank','noopener,noreferrer')
+  }
 
   useEffect(()=>{
     try{
@@ -239,10 +267,15 @@ export default function Page(){
 
   async function openMerchant(m){
     setSelectedMerchant(m);setMerchantLoading(true);setMessage('')
-    const {data,error}=await supabase.from('products').select('*').eq('merchant_id',m.id).eq('is_available',true).order('sort_order').order('name')
+    const [{data:productData,error:productError},{data:categoryData,error:categoryError}]=await Promise.all([
+      supabase.from('products').select('*').eq('merchant_id',m.id).eq('is_available',true).order('sort_order').order('name'),
+      supabase.from('categories').select('*').eq('merchant_id',m.id).eq('is_active',true).order('sort_order').order('name')
+    ])
     setMerchantLoading(false)
-    if(error)return setMessage(error.message)
-    setProducts(data||[])
+    if(productError)return setMessage(productError.message)
+    if(categoryError)return setMessage(categoryError.message)
+    setProducts(productData||[])
+    setCategories(categoryData||[])
   }
 
   async function add(p){
@@ -900,7 +933,7 @@ export default function Page(){
         <ChevronDown/>
       </button>
       <div className="header-actions-v3">
-        <button className="notification-btn"><Bell/></button>
+        <button className="support-btn-v36" onClick={openSupport} title="Soporte Guti"><Headphones/><span>Soporte</span></button>
         <button className="cart-btn-v3" onClick={()=>setShowCart(true)}>
           <ShoppingCart/>
           {cartCount>0&&<span>{cartCount}</span>}
@@ -1107,6 +1140,7 @@ export default function Page(){
         <button onClick={()=>setShowAddressPicker(true)}><span><MapPinned/></span><div><b>Mis direcciones</b><small>{addresses.length} guardada{addresses.length===1?'':'s'}</small></div><ChevronRight/></button>
         <button onClick={()=>setTab('orders')}><span><ReceiptText/></span><div><b>Mis pedidos</b><small>Historial y seguimiento</small></div><ChevronRight/></button>
         <button onClick={async()=>{const code=profile?.referral_code||'';if(code){await navigator.clipboard?.writeText(code);setMessage(`Código ${code} copiado. Compártelo con tus amigos.`)}else setMessage('Tu código de referido se está preparando.')}}><span><Gift/></span><div><b>Invitar y ganar</b><small>{profile?.referral_code?`Tu código: ${profile.referral_code}`:'Referidos Guti · gana 100 puntos'}</small></div><ChevronRight/></button>
+        <button onClick={enableClientNotifications}><span><Headphones/></span><div><b>Avisos de mis pedidos</b><small>Activa notificaciones del navegador</small></div><ChevronRight/></button>
         <button><span><Heart/></span><div><b>Favoritos</b><small>Muy pronto</small></div><ChevronRight/></button>
       </section>
 
@@ -1123,25 +1157,73 @@ export default function Page(){
 
   function MerchantView(){
     const m=selectedMerchant
+
+    const categorySections=categories.map(cat=>({
+      ...cat,
+      products:products.filter(p=>p.category_id===cat.id)
+    })).filter(cat=>cat.products.length)
+
+    const uncategorized=products.filter(p=>!p.category_id || !categories.some(c=>c.id===p.category_id))
+
+    const priceInfo=p=>{
+      const regular=Number(p.regular_price??p.price)
+      const current=Number(p.price)
+      const promo=Number.isFinite(regular)&&Number.isFinite(current)&&current<regular
+      return {regular,current,promo}
+    }
+
+    const ProductCard=({p})=>{
+      const pricing=priceInfo(p)
+      return <article className="merchant-product-card-v341">
+        <div className="merchant-product-copy-v341">
+          <h3>{p.name}</h3>
+          <p>{p.description||'Disponible para pedir en Guti.mx'}</p>
+          <div className="merchant-product-price-v341">
+            {pricing.promo
+              ? <><strong>${pricing.current.toFixed(2)}</strong><del>${pricing.regular.toFixed(2)}</del><span>OFERTA</span></>
+              : <strong>${pricing.current.toFixed(2)}</strong>}
+          </div>
+        </div>
+        <div className="merchant-product-image-v341">
+          {p.image_url?<img src={p.image_url} alt={p.name}/>:<UtensilsCrossed/>}
+          <button onClick={()=>add(p)}><Plus/></button>
+        </div>
+      </article>
+    }
+
     return <main className="client-app merchant-page-v2">
-      <div className="merchant-topbar"><button onClick={()=>setSelectedMerchant(null)}><ArrowLeft/></button><b>{m.name}</b><button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button></div>
+      <div className="merchant-topbar">
+        <button onClick={()=>setSelectedMerchant(null)}><ArrowLeft/></button>
+        <b>{m.name}</b>
+        <button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button>
+      </div>
+
       <section className="merchant-hero-v2">
         {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<span><Store/></span>}
         <div className="merchant-hero-overlay"/>
-        <div className="merchant-hero-copy"><small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p><div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div></div>
-      </section>
-      <section className="merchant-products">
-        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
-        {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
-        {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
-        <div className="products-list-v2">
-          {products.map(p=><article key={p.id}>
-            <div className="product-image-v2">{p.image_url?<img src={p.image_url} alt={p.name}/>:<UtensilsCrossed/>}</div>
-            <div className="product-copy-v2"><h3>{p.name}</h3><p>{p.description||'Disponible para pedir en Guti.mx'}</p><b>${Number(p.price).toFixed(2)}</b></div>
-            <button className="product-add" onClick={()=>add(p)}><Plus/></button>
-          </article>)}
+        <div className="merchant-hero-copy">
+          <small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p>
+          <div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div>
         </div>
       </section>
+
+      <section className="merchant-products-v341">
+        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
+
+        {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
+        {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
+
+        {!merchantLoading&&categorySections.map(cat=><section className="merchant-category-section-v341" key={cat.id}>
+          <div className="merchant-category-heading-v341"><h2>{cat.name}</h2><span>{cat.products.length}</span></div>
+          <div className="merchant-products-list-v341">{cat.products.map(p=><ProductCard key={p.id} p={p}/>)}</div>
+        </section>)}
+
+        {!merchantLoading&&uncategorized.length>0&&<section className="merchant-category-section-v341">
+          <div className="merchant-category-heading-v341"><h2>Otros</h2><span>{uncategorized.length}</span></div>
+          <div className="merchant-products-list-v341">{uncategorized.map(p=><ProductCard key={p.id} p={p}/>)}</div>
+        </section>}
+      </section>
+
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
       {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
