@@ -1258,6 +1258,10 @@ function CardPaymentBox({onToken,onReset,error}){
 
     {(localError||error)&&<div className="clip-error"><X/>{localError||error}</div>}
 
+    <button type="button" className="clip-dedicated-test" onClick={()=>window.open('/pago/tarjeta','_blank','noopener,noreferrer')}>
+      Abrir prueba aislada de Clip
+    </button>
+
     <details className="clip-diagnostics" open>
       <summary>Diagnóstico Clip</summary>
       <div className="clip-diag-grid">

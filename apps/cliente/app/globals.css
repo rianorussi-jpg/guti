@@ -252,3 +252,16 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
 .clip-diag-grid span{color:#888}.clip-diag-grid b{font-weight:700;word-break:break-all}
 .clip-diagnostics p{font-size:7px;color:#999;line-height:1.45;margin:9px 0 0}
 .clip-iframe-wrap{min-height:190px!important}
+
+.clip-dedicated-test{width:100%;margin-top:9px;border:1px dashed #ef9b76;background:#fff8f4;color:var(--orange);border-radius:11px;padding:10px;font-size:9px;font-weight:900}
+.clip-isolated-page{min-height:100vh;background:#f5f5f5;padding:24px;display:grid;place-items:start center}
+.clip-isolated-card{width:min(100%,620px);background:#fff;border:1px solid #e8e8e8;border-radius:20px;padding:18px;box-shadow:0 15px 40px #00000010}
+.clip-isolated-card>small{font-size:8px;color:var(--orange);font-weight:900;letter-spacing:1px}
+.clip-isolated-card h1{font-size:24px;margin:4px 0 6px}.clip-isolated-card>p{font-size:10px;color:#777;line-height:1.5}
+.clip-isolated-mount{min-height:230px;border:1px solid #e6e6e6;border-radius:14px;background:#fafafa;overflow:hidden;margin:16px 0}
+.clip-isolated-card>button{width:100%;border:0;background:var(--orange);color:#fff;border-radius:12px;padding:12px;font-size:10px;font-weight:900}
+.clip-isolated-card>button:disabled{opacity:.5}
+.clip-isolated-status{display:grid;gap:6px;margin-top:16px;border-top:1px solid #eee;padding-top:14px}
+.clip-isolated-status>div{display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:9px}
+.clip-isolated-status span{color:#888}.clip-isolated-status b{word-break:break-all}
+.clip-isolated-note{background:#fff7e9;border:1px solid #f1dfb6;border-radius:10px;padding:9px!important;color:#7e6937!important;margin-top:14px!important}
