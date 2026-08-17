@@ -81,7 +81,7 @@ export default function Page(){
      if(error)throw error
     }
    }catch(mediaError){setMsg(`Negocio creado, pero no se pudieron subir una o más imágenes: ${mediaError.message}`)}
-   if(!msg)setMsg(`Negocio “${merchantForm.name}” creado. El dueño ya puede entrar a Guti Negocios con ${merchantForm.owner_email}.`)
+   if(!msg)setMsg(`Negocio “${merchantForm.name}” creado. El dueño ya puede entrar a GutiNegocios con ${merchantForm.owner_email}.`)
    setShowMerchant(false);setMerchantForm(merchantInitial);setLogoFile(null);setCoverFile(null);await load()
   }catch(err){setMsg(err.message)}finally{setMerchantBusy(false)}
  }
