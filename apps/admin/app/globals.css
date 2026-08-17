@@ -125,3 +125,6 @@
   .entity-status{grid-column:2;justify-self:start;margin-top:3px}
   .entity-copy b{white-space:normal;overflow-wrap:anywhere}
 }
+
+/* Admin v3.7 — cobro de entrega */
+.admin-payment-summary{display:grid;background:#eef9f2;border:1px solid #d6eadc;border-radius:10px;padding:9px;margin:9px 0}.admin-payment-summary.cash{background:#fff7e6;border-color:#edd8a6}.admin-payment-summary b{font-size:9px;text-transform:capitalize}.admin-payment-summary span{font-size:8px;color:#777;margin-top:2px}

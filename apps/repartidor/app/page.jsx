@@ -3,7 +3,7 @@ import { useEffect,useMemo,useState } from 'react'
 import {
   Bike,LogOut,MapPin,Phone,Navigation,Clock3,PackageCheck,CheckCircle2,
   Wallet,CalendarDays,History,ChevronRight,RefreshCw,Store,AlertCircle,
-  Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards
+  Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards,CreditCard,Banknote,ShieldCheck,X
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 
@@ -33,6 +33,7 @@ export default function Page(){
   const [settlements,setSettlements]=useState([])
   const [depositAmount,setDepositAmount]=useState('')
   const [depositReference,setDepositReference]=useState('')
+  const [deliveryConfirm,setDeliveryConfirm]=useState(null)
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
@@ -105,7 +106,7 @@ export default function Page(){
     setMsg('')
     const [{data:p},{data:j,error:je},{data:m,error:me},{data:h,error:he},{data:notifs},{data:cash},{data:deps},{data:sets}]=await Promise.all([
       supabase.from('profiles').select('full_name,phone').eq('id',uid).maybeSingle(),
-      supabase.rpc('get_available_orders_v34'),
+      supabase.rpc('get_available_orders_v37'),
       supabase.from('orders')
         .select('*,merchants(name,address,phone),addresses(formatted_address,instructions),profiles!orders_customer_id_fkey(full_name,phone)')
         .eq('courier_id',uid).in('status',['assigned','picked_up','on_the_way'])
@@ -123,7 +124,8 @@ export default function Page(){
     else setJobs((j||[]).map(x=>({
       id:x.order_id,total:x.total,status:x.status,created_at:x.created_at,
       merchant_name:x.merchant_name,merchant_address:x.merchant_address,
-      delivery_address:x.formatted_address,earning:Number(x.courier_earning??35)
+      delivery_address:x.formatted_address,earning:Number(x.courier_earning??35),
+      payment_method:x.payment_method,payment_status:x.payment_status,amount_to_collect:Number(x.amount_to_collect||0)
     })))
     if(me)setMsg(me.message);else setMine(m||[])
     if(he)setMsg(he.message);else setHistory(h||[])
@@ -144,6 +146,27 @@ export default function Page(){
     const {error}=await supabase.rpc('courier_set_order_status',{p_order_id:id,p_status:status})
     setBusy(false)
     if(error)setMsg(error.message);else await load(session.user.id)
+  }
+
+  const paymentName=m=>({cash:'Efectivo',card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance'}[m]||m||'Pago')
+  const amountDue=o=>{
+    if(!o)return 0
+    if(o.payment_method==='cash' && o.payment_status!=='paid')return Number(o.total||0)-Number(o.cash_collected_amount||0)
+    return 0
+  }
+
+  async function completeDelivery(order){
+    setBusy(true);setMsg('')
+    const due=amountDue(order)
+    const {error}=await supabase.rpc('courier_complete_delivery_v37',{
+      p_order_id:order.id,
+      p_cash_collected:order.payment_method==='cash'?Math.max(0,due):0
+    })
+    setBusy(false)
+    if(error)return setMsg(error.message)
+    setDeliveryConfirm(null)
+    setMsg(order.payment_method==='cash'?'Entrega completada y cobro registrado.':'Entrega completada.')
+    await load(session.user.id)
   }
 
   const active=mine[0]||null
@@ -219,6 +242,17 @@ export default function Page(){
               {active.profiles?.phone&&<a href={`tel:${active.profiles.phone}`}><Phone/>Llamar</a>}
             </div>
 
+            {active.status==='on_the_way'&&<div className={`delivery-payment-card ${active.payment_method==='cash'&&active.payment_status!=='paid'?'cash':'paid'}`}>
+              <span className="payment-icon">{active.payment_method==='cash'?<Banknote/>:<ShieldCheck/>}</span>
+              <div>
+                <small>PAGO DEL PEDIDO</small>
+                {active.payment_method==='cash'&&active.payment_status!=='paid'
+                  ? <><b>Cobrar al cliente ${amountDue(active).toFixed(2)}</b><p>Pago en efectivo. No marques entregado hasta recibir el dinero.</p></>
+                  : <><b>Pedido pagado · No cobrar</b><p>{paymentName(active.payment_method)} confirmado. Solo entrega el pedido.</p></>}
+              </div>
+              <span className="payment-method-pill">{paymentName(active.payment_method)}</span>
+            </div>}
+
             <div className="map-actions">
               <a target="_blank" rel="noreferrer" href={googleUrl(active.status==='assigned'?(active.merchants?.address||active.addresses?.formatted_address):active.addresses?.formatted_address)}><Map/>Google Maps</a>
               <a target="_blank" rel="noreferrer" href={wazeUrl(active.status==='assigned'?(active.merchants?.address||active.addresses?.formatted_address):active.addresses?.formatted_address)}><Navigation/>Waze</a>
@@ -227,7 +261,7 @@ export default function Page(){
             <div className="delivery-main-action">
               {active.status==='assigned'&&<button disabled={busy} onClick={()=>step(active.id,'picked_up')}><PackageCheck/>Confirmar recogida</button>}
               {active.status==='picked_up'&&<button disabled={busy} onClick={()=>step(active.id,'on_the_way')}><Route/>Iniciar entrega</button>}
-              {active.status==='on_the_way'&&<button disabled={busy} onClick={()=>step(active.id,'delivered')}><CheckCircle2/>Confirmar entrega</button>}
+              {active.status==='on_the_way'&&<button disabled={busy} onClick={()=>setDeliveryConfirm(active)}><CheckCircle2/>Revisar pago y entregar</button>}
             </div>
           </article>}
         </section>
@@ -239,7 +273,7 @@ export default function Page(){
           :<div className="available-list">{jobs.map(j=><article key={j.id}>
             <div className="available-store"><span><Store/></span><div><small>RECOGER</small><b>{j.merchant_name}</b><p>{j.merchant_address||'Gutiérrez Zamora'}</p></div><strong>${j.earning.toFixed(2)}</strong></div>
             <div className="available-destination"><MapPin/><span>{j.delivery_address}</span></div>
-            <button disabled={hasActive||busy} onClick={()=>claim(j.id)}>{hasActive?'Termina tu entrega para tomarlo':'Tomar pedido'}<ChevronRight/></button>
+<button disabled={hasActive||busy} onClick={()=>claim(j.id)}>{hasActive?'Termina tu entrega para tomarlo':'Tomar pedido'}<ChevronRight/></button>
           </article>)}</div>}
         </section>
       </>}
@@ -291,6 +325,27 @@ export default function Page(){
       <button className={tab==='payments'?'active':''} onClick={()=>setTab('payments')}><Landmark/><span>Pagos</span>{settlements.filter(s=>s.status==='pending').length>0&&<i>{settlements.filter(s=>s.status==='pending').length}</i>}</button>
       <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History/><span>Historial</span></button>
     </nav>
+
+    {deliveryConfirm&&<div className="delivery-confirm-backdrop" onClick={()=>!busy&&setDeliveryConfirm(null)}>
+      <section className="delivery-confirm-modal" onClick={e=>e.stopPropagation()}>
+        <button className="delivery-confirm-close" disabled={busy} onClick={()=>setDeliveryConfirm(null)}><X/></button>
+        <div className={`delivery-confirm-hero ${deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'?'cash':'paid'}`}>
+          {deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'?<Banknote/>:<ShieldCheck/>}
+          <small>ANTES DE ENTREGAR</small>
+          {deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'
+            ? <><h2>Cobra ${amountDue(deliveryConfirm).toFixed(2)}</h2><p>El cliente eligió efectivo. Confirma únicamente después de recibir el pago completo.</p></>
+            : <><h2>Ya está pagado</h2><p>No le cobres nada al cliente. Pago por {paymentName(deliveryConfirm.payment_method)}.</p></>}
+        </div>
+        <div className="delivery-confirm-summary">
+          <div><span>Total del pedido</span><b>${Number(deliveryConfirm.total||0).toFixed(2)}</b></div>
+          <div><span>Tu ganancia de reparto</span><b>$35.00</b></div>
+          {deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'&&<div className="deposit-after"><span>Después depositarás a Guti</span><b>${Math.max(0,Number(deliveryConfirm.total||0)-35).toFixed(2)}</b></div>}
+        </div>
+        {deliveryConfirm.payment_method!=='cash'&&deliveryConfirm.payment_status!=='paid'
+          ? <div className="payment-blocked"><AlertCircle/><div><b>Pago todavía no confirmado</b><span>No entregues el pedido. Contacta a Guti para revisar el pago.</span></div></div>
+          : <button className="delivery-confirm-final" disabled={busy} onClick={()=>completeDelivery(deliveryConfirm)}>{busy?'Confirmando...':deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'?`Sí, cobré $${amountDue(deliveryConfirm).toFixed(2)} y entregué`:'Confirmar pedido entregado'}</button>}
+      </section>
+    </div>}
 
     {showNotifications&&<div className="courier-drawer-backdrop" onClick={()=>setShowNotifications(false)}><aside className="courier-drawer" onClick={e=>e.stopPropagation()}><header><div><small>AVISOS GUTI</small><h2>Notificaciones</h2></div><button onClick={()=>setShowNotifications(false)}>×</button></header><button className="drawer-read" onClick={markNotificationsRead}><CheckCheck/>Marcar todo leído</button><div>{notifications.map(n=><article className={!n.read_at?'unread':''} key={n.id}><Bell/><span><b>{n.title}</b><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString('es-MX')}</small></span></article>)}</div><button className="drawer-enable" onClick={enableNotifications}>Activar avisos del navegador</button></aside></div>}
   </main>

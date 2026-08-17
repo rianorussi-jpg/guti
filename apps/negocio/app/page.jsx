@@ -8,7 +8,7 @@ import {
   Camera, MapPin, Phone, FileText, BadgePercent, AlertCircle, ChevronDown,
   CircleDollarSign, Boxes, Tag, ListPlus, CheckCircle2, XCircle, Loader2,
   RefreshCw, Menu, ArrowLeft, Copy, ExternalLink, Volume2, VolumeX, Timer, PauseCircle,
-  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck
+  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck, Banknote, CreditCard
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 
@@ -961,6 +961,10 @@ function OrderModal({order,items,onClose,onStatus,onAccept,merchant}){
         <div className="order-detail-hero">
           <div><span className={`status-pill ${statusMeta[order.status]?.tone||'gray'}`}>{statusMeta[order.status]?.label||order.status}</span><small>{new Date(order.created_at).toLocaleString('es-MX')}</small></div>
           <strong>${Number(order.total).toFixed(2)}</strong>
+        </div>
+        <div className={`merchant-payment-info ${order.payment_method==='cash'&&order.payment_status!=='paid'?'cash':'paid'}`}>
+          <span>{order.payment_method==='cash'?<Banknote/>:<CreditCard/>}</span>
+          <div><small>PAGO</small><b>{order.payment_method==='cash'&&order.payment_status!=='paid'?`Efectivo · el repartidor cobrará $${Number(order.total||0).toFixed(2)}`:`${({card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance',cash:'Efectivo'}[order.payment_method]||order.payment_method)} · Pagado`}</b></div>
         </div>
         <section className="detail-section"><h3>Productos</h3>
           {items.map(i=><div className="detail-item" key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.group_name}: {o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}</div><strong>${Number(i.line_total).toFixed(2)}</strong></div>)}
