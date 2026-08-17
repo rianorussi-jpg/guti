@@ -113,11 +113,18 @@ export async function POST(request){
     }
 
     if(status==='pending'){
-      await admin.from('payments').upsert({
+      if(!clip.id){
+        return fail('Clip solicitó 3DS pero no devolvió un payment_id.',502,{
+          clip_status:'pending',
+          pending_action:clip.pending_action||null
+        })
+      }
+
+      const paymentPayload={
         order_id:null,
         user_id:user.id,
         provider:'clip',
-        provider_payment_id:clip.id||null,
+        provider_payment_id:clip.id,
         amount:total,
         currency:'MXN',
         status:'pending',
@@ -125,15 +132,48 @@ export async function POST(request){
         raw_response:{
           clip,
           guti_checkout:{
-            merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),
-            merchant_delivery_mode:merchant.delivery_mode||'guti',subtotal,total,items:normalizedItems
+            merchant_id:merchantId,
+            address_id:addressId,
+            notes:String(body.notes||'').slice(0,500),
+            merchant_delivery_mode:merchant.delivery_mode||'guti',
+            subtotal,
+            total,
+            items:normalizedItems
           }
         }
-      },{onConflict:'provider,provider_payment_id'})
+      }
+
+      // No seguimos al 3DS hasta confirmar que el intento quedó guardado.
+      const {data:existing}=await admin
+        .from('payments')
+        .select('id')
+        .eq('provider','clip')
+        .eq('provider_payment_id',clip.id)
+        .maybeSingle()
+
+      let persistError=null
+      if(existing?.id){
+        const {error}=await admin.from('payments').update(paymentPayload).eq('id',existing.id)
+        persistError=error
+      }else{
+        const {error}=await admin.from('payments').insert(paymentPayload)
+        persistError=error
+      }
+
+      if(persistError){
+        console.error('Could not persist pending Clip payment',clip.id,persistError)
+        return fail('Clip inició la verificación bancaria, pero Guti no pudo guardar el intento de pago. Intenta nuevamente.',500,{
+          clip_status:'pending',
+          clip_payment_id:clip.id
+        })
+      }
 
       return NextResponse.json({
-        ok:false,message:'Tu banco necesita autenticación 3DS.',
-        clip_status:'pending',clip_payment_id:clip.id||null,pending_action:clip.pending_action||null
+        ok:false,
+        message:'Tu banco necesita autenticación 3DS.',
+        clip_status:'pending',
+        clip_payment_id:clip.id,
+        pending_action:clip.pending_action||null
       },{status:202})
     }
 
@@ -150,12 +190,35 @@ export async function POST(request){
     const {error:itemsError}=await admin.from('order_items').insert(normalizedItems.map(i=>({...i,order_id:order.id})))
     if(itemsError)return fail('El pago fue aprobado y el pedido creado, pero hubo un problema con sus productos. Contacta a soporte.',500,{order_id:order.id})
 
-    await admin.from('payments').upsert({
-      order_id:order.id,user_id:user.id,provider:'clip',provider_payment_id:clip.id||null,
-      amount:total,currency:'MXN',status:'paid',status_detail:clip?.status_detail?.code||null,
-      last4:clip?.payment_method?.card?.last_digits||null,brand:clip?.payment_method?.id||null,
-      paid_at:clip?.approved_at||new Date().toISOString(),raw_response:{clip}
-    },{onConflict:'provider,provider_payment_id'})
+    const paidPayload={
+      order_id:order.id,
+      user_id:user.id,
+      provider:'clip',
+      provider_payment_id:clip.id||null,
+      amount:total,
+      currency:'MXN',
+      status:'paid',
+      status_detail:clip?.status_detail?.code||null,
+      last4:clip?.payment_method?.card?.last_digits||null,
+      brand:clip?.payment_method?.id||null,
+      paid_at:clip?.approved_at||new Date().toISOString(),
+      raw_response:{clip}
+    }
+
+    if(clip.id){
+      const {data:existingPayment}=await admin
+        .from('payments')
+        .select('id')
+        .eq('provider','clip')
+        .eq('provider_payment_id',clip.id)
+        .maybeSingle()
+
+      const {error:paymentAuditError}=existingPayment?.id
+        ? await admin.from('payments').update(paidPayload).eq('id',existingPayment.id)
+        : await admin.from('payments').insert(paidPayload)
+
+      if(paymentAuditError)console.error('Could not persist approved Clip payment audit',clip.id,paymentAuditError)
+    }
 
     return NextResponse.json({ok:true,status:'paid',order_id:order.id,payment_id:clip.id,amount:total})
   }catch(error){

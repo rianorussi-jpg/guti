@@ -21,7 +21,15 @@ export async function GET(request){
     if(!paymentId)return fail('Falta payment_id.')
 
     const {data:payment}=await admin.from('payments').select('*').eq('provider','clip').eq('provider_payment_id',paymentId).eq('user_id',user.id).maybeSingle()
-    if(!payment)return fail('No encontramos este pago.',404)
+    if(!payment){
+      // Clip puede tener el pago aunque una versión anterior de Guti no haya
+      // persistido correctamente el intento local. No podemos crear el pedido
+      // sin el snapshot validado del carrito, así que devolvemos un error claro.
+      return fail('Clip generó el pago, pero Guti no encontró el registro local del intento. Vuelve al carrito y reintenta con esta versión.',409,{
+        clip_payment_id:paymentId,
+        code:'GUTI_PAYMENT_SNAPSHOT_MISSING'
+      })
+    }
     if(payment.status==='paid'&&payment.order_id)return NextResponse.json({ok:true,status:'paid',order_id:payment.order_id})
 
     const clipRes=await fetch(`https://api.payclip.com/payments/${encodeURIComponent(paymentId)}`,{
