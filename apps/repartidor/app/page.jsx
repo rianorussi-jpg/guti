@@ -1,4 +1,5 @@
 'use client'
+const GUTI_BUILD_V382_REPARTIDOR='3.8.2'
 import { useEffect,useMemo,useState } from 'react'
 import {
   Bike,LogOut,MapPin,Phone,Navigation,Clock3,PackageCheck,CheckCircle2,

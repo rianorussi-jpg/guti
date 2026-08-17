@@ -1,4 +1,5 @@
 'use client'
+const GUTI_BUILD_V382_ADMIN='3.8.2'
 import {useEffect,useMemo,useState} from 'react'
 import {getSupabaseBrowserClient} from '../lib/supabase'
 

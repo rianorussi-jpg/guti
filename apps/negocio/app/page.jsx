@@ -1,4 +1,5 @@
 'use client'
+const GUTI_BUILD_V382_NEGOCIO='3.8.2'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, ReceiptText, PackageSearch, Store, Clock3, Settings, LogOut,
