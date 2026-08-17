@@ -44,6 +44,7 @@ export default function Page(){
   const [merchants,setMerchants]=useState([])
   const [selectedMerchant,setSelectedMerchant]=useState(null)
   const [products,setProducts]=useState([])
+  const [categories,setCategories]=useState([])
   const [merchantLoading,setMerchantLoading]=useState(false)
 
   const [cart,setCart]=useState([])
@@ -239,10 +240,15 @@ export default function Page(){
 
   async function openMerchant(m){
     setSelectedMerchant(m);setMerchantLoading(true);setMessage('')
-    const {data,error}=await supabase.from('products').select('*').eq('merchant_id',m.id).eq('is_available',true).order('sort_order').order('name')
+    const [{data:productData,error:productError},{data:categoryData,error:categoryError}]=await Promise.all([
+      supabase.from('products').select('*').eq('merchant_id',m.id).eq('is_available',true).order('sort_order').order('name'),
+      supabase.from('categories').select('*').eq('merchant_id',m.id).eq('is_active',true).order('sort_order').order('name')
+    ])
     setMerchantLoading(false)
-    if(error)return setMessage(error.message)
-    setProducts(data||[])
+    if(productError)return setMessage(productError.message)
+    if(categoryError)return setMessage(categoryError.message)
+    setProducts(productData||[])
+    setCategories(categoryData||[])
   }
 
   async function add(p){
@@ -1123,25 +1129,73 @@ export default function Page(){
 
   function MerchantView(){
     const m=selectedMerchant
+
+    const categorySections=categories.map(cat=>({
+      ...cat,
+      products:products.filter(p=>p.category_id===cat.id)
+    })).filter(cat=>cat.products.length)
+
+    const uncategorized=products.filter(p=>!p.category_id || !categories.some(c=>c.id===p.category_id))
+
+    const priceInfo=p=>{
+      const regular=Number(p.regular_price??p.price)
+      const current=Number(p.price)
+      const promo=Number.isFinite(regular)&&Number.isFinite(current)&&current<regular
+      return {regular,current,promo}
+    }
+
+    const ProductCard=({p})=>{
+      const pricing=priceInfo(p)
+      return <article className="merchant-product-card-v341">
+        <div className="merchant-product-copy-v341">
+          <h3>{p.name}</h3>
+          <p>{p.description||'Disponible para pedir en Guti.mx'}</p>
+          <div className="merchant-product-price-v341">
+            {pricing.promo
+              ? <><strong>${pricing.current.toFixed(2)}</strong><del>${pricing.regular.toFixed(2)}</del><span>OFERTA</span></>
+              : <strong>${pricing.current.toFixed(2)}</strong>}
+          </div>
+        </div>
+        <div className="merchant-product-image-v341">
+          {p.image_url?<img src={p.image_url} alt={p.name}/>:<UtensilsCrossed/>}
+          <button onClick={()=>add(p)}><Plus/></button>
+        </div>
+      </article>
+    }
+
     return <main className="client-app merchant-page-v2">
-      <div className="merchant-topbar"><button onClick={()=>setSelectedMerchant(null)}><ArrowLeft/></button><b>{m.name}</b><button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button></div>
+      <div className="merchant-topbar">
+        <button onClick={()=>setSelectedMerchant(null)}><ArrowLeft/></button>
+        <b>{m.name}</b>
+        <button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button>
+      </div>
+
       <section className="merchant-hero-v2">
         {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<span><Store/></span>}
         <div className="merchant-hero-overlay"/>
-        <div className="merchant-hero-copy"><small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p><div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div></div>
-      </section>
-      <section className="merchant-products">
-        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
-        {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
-        {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
-        <div className="products-list-v2">
-          {products.map(p=><article key={p.id}>
-            <div className="product-image-v2">{p.image_url?<img src={p.image_url} alt={p.name}/>:<UtensilsCrossed/>}</div>
-            <div className="product-copy-v2"><h3>{p.name}</h3><p>{p.description||'Disponible para pedir en Guti.mx'}</p><b>${Number(p.price).toFixed(2)}</b></div>
-            <button className="product-add" onClick={()=>add(p)}><Plus/></button>
-          </article>)}
+        <div className="merchant-hero-copy">
+          <small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p>
+          <div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div>
         </div>
       </section>
+
+      <section className="merchant-products-v341">
+        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
+
+        {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
+        {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
+
+        {!merchantLoading&&categorySections.map(cat=><section className="merchant-category-section-v341" key={cat.id}>
+          <div className="merchant-category-heading-v341"><h2>{cat.name}</h2><span>{cat.products.length}</span></div>
+          <div className="merchant-products-list-v341">{cat.products.map(p=><ProductCard key={p.id} p={p}/>)}</div>
+        </section>)}
+
+        {!merchantLoading&&uncategorized.length>0&&<section className="merchant-category-section-v341">
+          <div className="merchant-category-heading-v341"><h2>Otros</h2><span>{uncategorized.length}</span></div>
+          <div className="merchant-products-list-v341">{uncategorized.map(p=><ProductCard key={p.id} p={p}/>)}</div>
+        </section>}
+      </section>
+
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
       {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
