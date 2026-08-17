@@ -36,6 +36,13 @@ const emptyProduct = {
 
 export default function Page(){
   const supabase=useMemo(()=>getSupabaseBrowserClient(),[])
+
+  function mediaUrl(url){
+    if(!url)return ''
+    if(/^https?:\/\//i.test(url)||url.startsWith('data:')||url.startsWith('blob:'))return url
+    const base=process.env.NEXT_PUBLIC_GUTI_CLIENT_URL||'https://guti.enla.mx'
+    try{return new URL(url,base).toString()}catch{return url}
+  }
   const [session,setSession]=useState(null)
   const [email,setEmail]=useState('')
   const [password,setPassword]=useState('')
@@ -204,6 +211,7 @@ export default function Page(){
       .from('products')
       .select('*,categories(name)')
       .eq('merchant_id',merchantId)
+      .is('deleted_at',null)
       .order('sort_order')
       .order('created_at',{ascending:false})
     if(error){setMsg(error.message);return}
@@ -425,9 +433,16 @@ export default function Page(){
   }
 
   async function deleteProduct(p){
-    if(!confirm(`¿Eliminar "${p.name}"?`))return
-    const {error}=await supabase.from('products').delete().eq('id',p.id)
+    if(!confirm(`¿Eliminar "${p.name}" del catálogo?\n\nLos pedidos anteriores conservarán este producto en su historial.`))return
+    setMsg('')
+    const {error}=await supabase.from('products').update({
+      is_available:false,
+      deleted_at:new Date().toISOString(),
+      paused_until:null,
+      pause_reason:'archived'
+    }).eq('id',p.id)
     if(error)return setMsg(error.message)
+    setMsg(`"${p.name}" se eliminó del catálogo. Los pedidos anteriores se conservan.`)
     await loadProducts(merchant.id)
   }
 
@@ -688,7 +703,7 @@ export default function Page(){
               </div>
               <div className="product-table">
                 {shownProducts.map(p=><article key={p.id}>
-                  <div className="product-thumb">{p.image_url?<img src={p.image_url} alt=""/>:<UtensilsCrossed/>}</div>
+                  <div className="product-thumb">{p.image_url?<img src={mediaUrl(p.image_url)} alt={p.name}/>:<UtensilsCrossed/>}</div>
                   <div className="product-main"><b>{p.name} {p.promo_price&&<em className="promo-chip"><Percent/>Promo</em>}</b><small>{p.categories?.name||'Sin categoría'} · {p.description||'Sin descripción'}</small>{p.paused_until&&<span className="pause-until">Pausado hasta {new Date(p.paused_until).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</span>}</div>
                   <strong>${Number(p.price).toFixed(2)}</strong>
                   <button className={`availability ${p.is_available?'on':'off'}`} onClick={()=>toggleProduct(p)}>{p.is_available?<><Eye/>Disponible</>:<><EyeOff/>Agotado</>}</button>
@@ -855,7 +870,7 @@ export default function Page(){
             <section className="editor-card">
               <h3>Fotografía</h3>
               <div className="product-image-editor">
-                {productForm.image_url?<img src={productForm.image_url} alt=""/>:<div><ImageIcon/><span>Sin fotografía</span></div>}
+                {productForm.image_url?<img src={mediaUrl(productForm.image_url)} alt={productForm.name||'Producto'}/>:<div><ImageIcon/><span>Sin fotografía</span></div>}
               </div>
               <label className="upload-button full">{uploading==='product'?<Loader2 className="spin"/>:<Upload/>}Subir imagen<input type="file" accept="image/*" onChange={e=>uploadMedia(e.target.files?.[0],'product')}/></label>
               <p className="help-text">Usa una foto cuadrada o horizontal, clara y con el producto al centro.</p>
