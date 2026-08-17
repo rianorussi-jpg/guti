@@ -16,6 +16,7 @@ export default function CardPaymentPage(){
   const [threeDS,setThreeDS]=useState(null)
   const [paymentId,setPaymentId]=useState(null)
   const [statusText,setStatusText]=useState('')
+  const [successOrderId,setSuccessOrderId]=useState(null)
 
   useEffect(()=>{
     let cancelled=false
@@ -86,9 +87,16 @@ export default function CardPaymentPage(){
   },[threeDS?.url,paymentId,session?.access_token])
 
   function finish(orderId){
-    sessionStorage.setItem('guti-clip-payment-result',JSON.stringify({order_id:orderId}))
-    sessionStorage.removeItem('guti-clip-checkout')
-    window.location.replace('/')
+    setSuccessOrderId(orderId)
+    setProcessing(false)
+    setStatusText('')
+    setError('')
+
+    setTimeout(()=>{
+      sessionStorage.setItem('guti-clip-payment-result',JSON.stringify({order_id:orderId}))
+      sessionStorage.removeItem('guti-clip-checkout')
+      window.location.replace('/')
+    },2600)
   }
 
   async function verifyPayment(id=paymentId){
@@ -167,6 +175,29 @@ export default function CardPaymentPage(){
       setError(err?.message||'Revisa los datos de tu tarjeta.')
     }
   }
+
+  if(successOrderId)return <main className="payment-success-page">
+    <section className="payment-success-card">
+      <div className="payment-success-icon">
+        <ShieldCheck/>
+        <span className="payment-success-pulse"/>
+      </div>
+
+      <small>PAGO APROBADO</small>
+      <h1>¡Pago confirmado!</h1>
+      <p>Tu pedido ya fue enviado correctamente.</p>
+
+      <div className="payment-success-order">
+        <span>Pedido</span>
+        <b>#{String(successOrderId).slice(0,8).toUpperCase()}</b>
+      </div>
+
+      <div className="payment-success-loading">
+        <span/>
+      </div>
+      <em>Redirigiendo al rastreo de tu pedido...</em>
+    </section>
+  </main>
 
   if(!checkout&&!loading)return <main className="card-pay-page"><section className="card-pay-shell"><div className="card-pay-error"><AlertCircle/><b>{error||'No hay un checkout pendiente.'}</b><button onClick={()=>window.location.replace('/')}>Volver a Guti</button></div></section></main>
 
