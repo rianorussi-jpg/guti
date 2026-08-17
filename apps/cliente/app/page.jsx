@@ -90,6 +90,9 @@ export default function Page(){
   const [checkoutStep,setCheckoutStep]=useState(1)
   const [paymentMethod,setPaymentMethod]=useState('cash')
   const [checkoutBusy,setCheckoutBusy]=useState(false)
+  const [cardToken,setCardToken]=useState(null)
+  const [cardReady,setCardReady]=useState(false)
+  const [cardError,setCardError]=useState('')
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>applySession(data.session))
@@ -430,45 +433,56 @@ export default function Page(){
 
     setCheckoutBusy(true)
     setMessage('')
+    setCardError('')
     const merchant=group.merchant||merchants.find(m=>m.id===merchantId)
+
+    if(paymentMethod==='card'){
+      if(!cardToken){
+        setCheckoutBusy(false)
+        setCheckoutStep(2)
+        setCardError('Completa los datos de tu tarjeta y pulsa “Usar esta tarjeta”.')
+        return
+      }
+
+      const response=await fetch('/api/clip/pay',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+        body:JSON.stringify({
+          card_token:cardToken,
+          merchant_id:merchantId,
+          address_id:selectedAddress.id,
+          notes:checkoutNotes,
+          items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[]}))
+        })
+      })
+      const result=await response.json().catch(()=>({}))
+      setCheckoutBusy(false)
+      if(!response.ok||!result.ok){
+        setCardToken(null);setCardReady(false)
+        setCardError(result.message||'No pudimos procesar el pago con tarjeta.')
+        setCheckoutStep(2)
+        return
+      }
+      setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
+      setCheckoutNotes('');setCheckoutMerchantId(null);setShowCheckout(false)
+      setCardToken(null);setCardReady(false)
+      await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
+      setTrackingOrderId(result.order_id);setTab('home');setShowTracking(true)
+      return
+    }
+
     const {data:order,error:oerr}=await supabase.from('orders').insert({
-      customer_id:session.user.id,
-      merchant_id:merchantId,
-      address_id:selectedAddress.id,
-      status:'pending',
-      delivery_mode:merchant?.delivery_mode||'guti',
-      subtotal:group.subtotal,
-      delivery_fee:45,
-      discount:0,
-      total:group.total,
-      payment_method:paymentMethod,
-      payment_status:'pending',
-      notes:checkoutNotes
+      customer_id:session.user.id,merchant_id:merchantId,address_id:selectedAddress.id,status:'pending',
+      delivery_mode:merchant?.delivery_mode||'guti',subtotal:group.subtotal,delivery_fee:45,discount:0,total:group.total,
+      payment_method:paymentMethod,payment_status:'pending',notes:checkoutNotes
     }).select().single()
     if(oerr){setCheckoutBusy(false);setMessage(oerr.message);return}
-
-    const items=group.items.map(x=>({
-      order_id:order.id,
-      product_id:x.id,
-      product_name:x.name,
-      unit_price:Number(x.price),
-      quantity:x.qty,
-      line_total:Number(x.price)*x.qty,
-      selected_options:x.selected_options||[]
-    }))
+    const items=group.items.map(x=>({order_id:order.id,product_id:x.id,product_name:x.name,unit_price:Number(x.price),quantity:x.qty,line_total:Number(x.price)*x.qty,selected_options:x.selected_options||[]}))
     const {error:ierr}=await supabase.from('order_items').insert(items)
     if(ierr){setCheckoutBusy(false);setMessage(ierr.message);return}
-
-    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
-    setCheckoutNotes('')
-    setCheckoutMerchantId(null)
-    setShowCheckout(false)
-    setCheckoutBusy(false)
-
+    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCheckoutMerchantId(null);setShowCheckout(false);setCheckoutBusy(false)
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
-    setTrackingOrderId(order.id)
-    setTab('home')
-    setShowTracking(true)
+    setTrackingOrderId(order.id);setTab('home');setShowTracking(true)
   }
 
 
@@ -692,7 +706,7 @@ export default function Page(){
     const methods=[
       {id:'cash',label:'Efectivo',desc:'Paga al recibir tu pedido',icon:'💵'},
       {id:'transfer',label:'Transferencia',desc:'Pago por transferencia',icon:'🏦'},
-      {id:'card',label:'Tarjeta',desc:'Integración pendiente',icon:'💳',coming:true},
+      {id:'card',label:'Tarjeta',desc:'Crédito o débito con Clip',icon:'💳'},
       {id:'guti_balance',label:'Guti Balance',desc:`Saldo: $${Number(profile?.guti_balance||0).toFixed(2)}`,icon:'🧡',coming:Number(profile?.guti_balance||0)<group.total}
     ]
     return <div className="checkout-backdrop" onClick={()=>setShowCheckout(false)}>
@@ -715,15 +729,16 @@ export default function Page(){
         {checkoutStep===2&&<section className="checkout-step">
           <div className="checkout-step-title"><span><WalletCards/></span><div><small>PASO 2</small><h3>Método de pago</h3><p>Elige cómo quieres pagar.</p></div></div>
           <div className="payment-methods">
-            {methods.map(m=><button key={m.id} disabled={!!m.coming} className={paymentMethod===m.id?'selected':''} onClick={()=>setPaymentMethod(m.id)}>
+            {methods.map(m=><button key={m.id} disabled={!!m.coming} className={paymentMethod===m.id?'selected':''} onClick={()=>{setPaymentMethod(m.id);if(m.id!=='card'){setCardToken(null);setCardReady(false);setCardError('')}}}>
               <span className="payment-emoji">{m.icon}</span>
               <div><b>{m.label}</b><small>{m.desc}</small></div>
-              {m.coming?<em>{m.id==='card'?'PRÓXIMAMENTE':'SIN SALDO'}</em>:<span className="payment-check">{paymentMethod===m.id?<Check/>:null}</span>}
+              {m.coming?<em>{m.id==='guti_balance'?'SIN SALDO':'PRÓXIMAMENTE'}</em>:<span className="payment-check">{paymentMethod===m.id?<Check/>:null}</span>}
             </button>)}
           </div>
+          {paymentMethod==='card'&&<CardPaymentBox key={`${checkoutMerchantId}-${checkoutStep}`} onToken={(token)=>{setCardToken(token);setCardReady(true);setCardError('')}} onReset={()=>{setCardToken(null);setCardReady(false)}} error={cardError}/>} 
           <div className="checkout-nav-buttons">
             <button className="checkout-back" onClick={()=>setCheckoutStep(1)}><ArrowLeft/>Atrás</button>
-            <button className="checkout-next" onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>
+            <button className="checkout-next" disabled={paymentMethod==='card'&&!cardReady} onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>
           </div>
         </section>}
 
@@ -743,7 +758,7 @@ export default function Page(){
               </div>)}
             </div>
             <div className="checkout-review-line"><span>Dirección</span><b>{selectedAddress?.label} · {selectedAddress?.formatted_address}</b></div>
-            <div className="checkout-review-line"><span>Pago</span><b>{methods.find(m=>m.id===paymentMethod)?.label}</b></div>
+            <div className="checkout-review-line"><span>Pago</span><b>{paymentMethod==='card'?'Tarjeta · Clip seguro':methods.find(m=>m.id===paymentMethod)?.label}</b></div>
             <div className="checkout-review-line"><span>Subtotal</span><b>${group.subtotal.toFixed(2)}</b></div>
             <div className="checkout-review-line"><span>Envío</span><b>$45.00</b></div>
             <div className="checkout-review-line total"><span>Total</span><b>${group.total.toFixed(2)}</b></div>
@@ -1102,4 +1117,59 @@ export default function Page(){
     <BottomNav/>
     {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
   </main>
+}
+
+
+function CardPaymentBox({onToken,onReset,error}){
+  const [loading,setLoading]=useState(true)
+  const [tokenizing,setTokenizing]=useState(false)
+  const [localError,setLocalError]=useState('')
+  const [secured,setSecured]=useState(false)
+  const cardRef=useRef(null)
+
+  useEffect(()=>{
+    let cancelled=false
+    async function init(){
+      try{
+        setLoading(true)
+        const configRes=await fetch('/api/clip/config',{cache:'no-store'})
+        const config=await configRes.json()
+        if(!configRes.ok||!config.apiKey)throw new Error(config.message||'Clip no está configurado.')
+        if(!window.ClipSDK){
+          await new Promise((resolve,reject)=>{
+            const existing=document.querySelector('script[data-clip-sdk="true"]')
+            if(existing){if(window.ClipSDK)return resolve();existing.addEventListener('load',resolve,{once:true});existing.addEventListener('error',()=>reject(new Error('No se pudo cargar Clip SDK.')),{once:true});return}
+            const script=document.createElement('script');script.src='https://sdk.clip.mx/js/clip-sdk.js';script.async=true;script.dataset.clipSdk='true';script.onload=resolve;script.onerror=()=>reject(new Error('No se pudo cargar Clip SDK.'));document.head.appendChild(script)
+          })
+        }
+        if(cancelled)return
+        const clip=new window.ClipSDK(config.apiKey)
+        const card=clip.element.create('Card',{theme:'light',locale:'es'})
+        card.mount('clip-card-checkout')
+        cardRef.current=card
+        setLoading(false)
+      }catch(err){if(!cancelled){setLoading(false);setLocalError(err?.message||'No pudimos iniciar el formulario seguro de Clip.')}}
+    }
+    init()
+    return()=>{cancelled=true;cardRef.current=null}
+  },[])
+
+  async function tokenize(){
+    if(!cardRef.current)return
+    try{
+      setTokenizing(true);setLocalError('');onReset?.()
+      const token=await cardRef.current.cardToken()
+      if(!token?.id)throw new Error('Clip no devolvió un token de tarjeta.')
+      onToken(token.id);setSecured(true)
+    }catch(err){setSecured(false);setLocalError(err?.message||'Revisa los datos de la tarjeta.')}
+    finally{setTokenizing(false)}
+  }
+
+  return <section className="clip-card-box">
+    <div className="clip-card-head"><div><span>💳</span><div><b>Pago seguro con Clip</b><small>Los datos de tu tarjeta los captura Clip, no Guti.</small></div></div><span className="clip-secure-badge">SEGURO</span></div>
+    {loading&&<div className="clip-loading">Cargando formulario seguro de Clip...</div>}
+    <div id="clip-card-checkout" className={loading?'clip-iframe-wrap loading':'clip-iframe-wrap'}/>
+    {secured?<div className="clip-token-ok"><Check/><div><b>Tarjeta lista para cobrar</b><small>Token temporal de un solo uso.</small></div><button onClick={()=>{setSecured(false);onReset?.()}}>Cambiar</button></div>:<button type="button" className="clip-tokenize-btn" disabled={loading||tokenizing} onClick={tokenize}>{tokenizing?'Validando tarjeta...':'Usar esta tarjeta'}</button>}
+    {(localError||error)&&<div className="clip-error"><X/>{localError||error}</div>}
+  </section>
 }
