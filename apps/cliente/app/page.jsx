@@ -629,7 +629,7 @@ export default function Page(){
       setCheckoutBusy(false)
       if(!response.ok||!result.ok){
         setCardToken(null);setCardReady(false)
-        setCardError(result.message||'No pudimos procesar el pago con tarjeta.')
+        setCardError(result.message||'No se pudo procesar el pago con tarjeta.')
         setCheckoutStep(2)
         return
       }
