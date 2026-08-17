@@ -1125,51 +1125,154 @@ function CardPaymentBox({onToken,onReset,error}){
   const [tokenizing,setTokenizing]=useState(false)
   const [localError,setLocalError]=useState('')
   const [secured,setSecured]=useState(false)
+  const [diagnostics,setDiagnostics]=useState({
+    sdkScript:false,sdkGlobal:false,apiKey:false,apiKeyPrefix:'',
+    cardCreated:false,mounted:false,mountNode:false,origin:'',
+    iframeCount:0,lastError:''
+  })
   const cardRef=useRef(null)
+  const observerRef=useRef(null)
 
   useEffect(()=>{
     let cancelled=false
+    const origin=typeof window!=='undefined'?window.location.origin:''
+    setDiagnostics(d=>({...d,origin}))
+
     async function init(){
       try{
         setLoading(true)
+        setLocalError('')
+
+        const mountNode=document.getElementById('clip-card-checkout')
+        setDiagnostics(d=>({...d,mountNode:!!mountNode}))
+        if(!mountNode)throw new Error('No existe el contenedor #clip-card-checkout.')
+
         const configRes=await fetch('/api/clip/config',{cache:'no-store'})
         const config=await configRes.json()
         if(!configRes.ok||!config.apiKey)throw new Error(config.message||'Clip no está configurado.')
+
+        setDiagnostics(d=>({...d,apiKey:true,apiKeyPrefix:String(config.apiKey).slice(0,9)}))
+
         if(!window.ClipSDK){
           await new Promise((resolve,reject)=>{
             const existing=document.querySelector('script[data-clip-sdk="true"]')
-            if(existing){if(window.ClipSDK)return resolve();existing.addEventListener('load',resolve,{once:true});existing.addEventListener('error',()=>reject(new Error('No se pudo cargar Clip SDK.')),{once:true});return}
-            const script=document.createElement('script');script.src='https://sdk.clip.mx/js/clip-sdk.js';script.async=true;script.dataset.clipSdk='true';script.onload=resolve;script.onerror=()=>reject(new Error('No se pudo cargar Clip SDK.'));document.head.appendChild(script)
+            if(existing){
+              setDiagnostics(d=>({...d,sdkScript:true}))
+              if(window.ClipSDK)return resolve()
+              existing.addEventListener('load',resolve,{once:true})
+              existing.addEventListener('error',()=>reject(new Error('No se pudo descargar clip-sdk.js.')),{once:true})
+              return
+            }
+            const script=document.createElement('script')
+            script.src='https://sdk.clip.mx/js/clip-sdk.js'
+            script.async=true
+            script.dataset.clipSdk='true'
+            script.onload=()=>{setDiagnostics(d=>({...d,sdkScript:true}));resolve()}
+            script.onerror=()=>reject(new Error('No se pudo descargar https://sdk.clip.mx/js/clip-sdk.js'))
+            document.head.appendChild(script)
           })
+        }else{
+          setDiagnostics(d=>({...d,sdkScript:true}))
         }
+
         if(cancelled)return
+        if(!window.ClipSDK)throw new Error('clip-sdk.js cargó, pero window.ClipSDK no existe.')
+        setDiagnostics(d=>({...d,sdkGlobal:true}))
+
         const clip=new window.ClipSDK(config.apiKey)
-        const card=clip.element.create('Card',{theme:'light',locale:'es'})
-        card.mount('clip-card-checkout')
+        const card=clip.element.create("Card",{theme:"light",locale:"es"})
+        setDiagnostics(d=>({...d,cardCreated:true}))
+
+        card.mount("clip-card-checkout")
         cardRef.current=card
+        setDiagnostics(d=>({...d,mounted:true}))
+
+        observerRef.current=new MutationObserver(()=>{
+          setDiagnostics(d=>({...d,iframeCount:mountNode.querySelectorAll('iframe').length}))
+        })
+        observerRef.current.observe(mountNode,{childList:true,subtree:true})
+
+        setTimeout(()=>{
+          if(cancelled)return
+          setDiagnostics(d=>({...d,iframeCount:mountNode.querySelectorAll('iframe').length}))
+        },1200)
+
         setLoading(false)
-      }catch(err){if(!cancelled){setLoading(false);setLocalError(err?.message||'No pudimos iniciar el formulario seguro de Clip.')}}
+      }catch(err){
+        const message=err?.message||String(err)||'Error desconocido iniciando Clip.'
+        console.error('[Guti Clip SDK]',err)
+        if(!cancelled){
+          setLoading(false)
+          setLocalError(message)
+          setDiagnostics(d=>({...d,lastError:message}))
+        }
+      }
     }
+
     init()
-    return()=>{cancelled=true;cardRef.current=null}
+    return ()=>{
+      cancelled=true
+      observerRef.current?.disconnect?.()
+      observerRef.current=null
+      cardRef.current=null
+    }
   },[])
 
   async function tokenize(){
-    if(!cardRef.current)return
+    if(!cardRef.current){
+      setLocalError('El elemento Card de Clip todavía no está disponible.')
+      return
+    }
     try{
-      setTokenizing(true);setLocalError('');onReset?.()
+      setTokenizing(true)
+      setLocalError('')
+      onReset?.()
       const token=await cardRef.current.cardToken()
-      if(!token?.id)throw new Error('Clip no devolvió un token de tarjeta.')
-      onToken(token.id);setSecured(true)
-    }catch(err){setSecured(false);setLocalError(err?.message||'Revisa los datos de la tarjeta.')}
-    finally{setTokenizing(false)}
+      if(!token?.id)throw new Error('Clip no devolvió un Card Token ID.')
+      onToken(token.id)
+      setSecured(true)
+    }catch(err){
+      const message=err?.message||'Revisa los datos de la tarjeta.'
+      console.error('[Guti Clip cardToken]',err)
+      setSecured(false)
+      setLocalError(message)
+      setDiagnostics(d=>({...d,lastError:`${err?.code?err.code+': ':''}${message}`}))
+    }finally{
+      setTokenizing(false)
+    }
   }
 
   return <section className="clip-card-box">
-    <div className="clip-card-head"><div><span>💳</span><div><b>Pago seguro con Clip</b><small>Los datos de tu tarjeta los captura Clip, no Guti.</small></div></div><span className="clip-secure-badge">SEGURO</span></div>
-    {loading&&<div className="clip-loading">Cargando formulario seguro de Clip...</div>}
-    <div id="clip-card-checkout" className={loading?'clip-iframe-wrap loading':'clip-iframe-wrap'}/>
-    {secured?<div className="clip-token-ok"><Check/><div><b>Tarjeta lista para cobrar</b><small>Token temporal de un solo uso.</small></div><button onClick={()=>{setSecured(false);onReset?.()}}>Cambiar</button></div>:<button type="button" className="clip-tokenize-btn" disabled={loading||tokenizing} onClick={tokenize}>{tokenizing?'Validando tarjeta...':'Usar esta tarjeta'}</button>}
+    <div className="clip-card-head">
+      <div><span>💳</span><div><b>Pago seguro con Clip</b><small>Clip captura los datos sensibles de tu tarjeta.</small></div></div>
+      <span className="clip-secure-badge">SANDBOX</span>
+    </div>
+
+    {loading&&<div className="clip-loading">Inicializando Checkout Transparente de Clip...</div>}
+    <div id="clip-card-checkout" className="clip-iframe-wrap"/>
+
+    {secured
+      ? <div className="clip-token-ok"><Check/><div><b>Tarjeta lista para cobrar</b><small>Token temporal de un solo uso.</small></div><button type="button" onClick={()=>{setSecured(false);onReset?.()}}>Cambiar</button></div>
+      : <button type="button" className="clip-tokenize-btn" disabled={loading||tokenizing||!diagnostics.mounted} onClick={tokenize}>{tokenizing?'Generando token...':'Usar esta tarjeta'}</button>
+    }
+
     {(localError||error)&&<div className="clip-error"><X/>{localError||error}</div>}
+
+    <details className="clip-diagnostics" open>
+      <summary>Diagnóstico Clip</summary>
+      <div className="clip-diag-grid">
+        <span>Origen</span><b>{diagnostics.origin||'—'}</b>
+        <span>API Key</span><b>{diagnostics.apiKey?`${diagnostics.apiKeyPrefix}••••`:'No detectada'}</b>
+        <span>Script SDK</span><b>{diagnostics.sdkScript?'Sí':'No'}</b>
+        <span>window.ClipSDK</span><b>{diagnostics.sdkGlobal?'Sí':'No'}</b>
+        <span>Card creado</span><b>{diagnostics.cardCreated?'Sí':'No'}</b>
+        <span>Contenedor</span><b>{diagnostics.mountNode?'Sí':'No'}</b>
+        <span>Card montado</span><b>{diagnostics.mounted?'Sí':'No'}</b>
+        <span>iframes Clip</span><b>{diagnostics.iframeCount}</b>
+        <span>Último error</span><b>{diagnostics.lastError||'Ninguno'}</b>
+      </div>
+      <p>Si Clip sigue mostrando “This page couldn’t load”, mándame una captura donde se vea este panel completo.</p>
+    </details>
   </section>
 }
+
