@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V382_CLIENT='3.8.2'
+const GUTI_BUILD_V383_CLIENT='3.8.3'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
@@ -72,6 +72,7 @@ export default function Page(){
   const [query,setQuery]=useState('')
   const [category,setCategory]=useState('all')
   const [message,setMessage]=useState('')
+  const [profileToast,setProfileToast]=useState('')
   const [lastNotification,setLastNotification]=useState(null)
   const [deferredInstallPrompt,setDeferredInstallPrompt]=useState(null)
 
@@ -131,28 +132,34 @@ export default function Page(){
     return()=>supabase.removeChannel(channel)
   },[session?.user?.id])
 
+  function showProfileToast(text){
+    setProfileToast(text)
+    window.clearTimeout(window.__gutiProfileToastTimer)
+    window.__gutiProfileToastTimer=window.setTimeout(()=>setProfileToast(''),3200)
+  }
+
   async function installGutiApp(){
     try{
       if(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone){
-        return setMessage('Guti ya está instalada en este dispositivo.')
+        return showProfileToast('Guti ya está instalada en este dispositivo.')
       }
 
       if(deferredInstallPrompt){
         deferredInstallPrompt.prompt()
         await deferredInstallPrompt.userChoice
         setDeferredInstallPrompt(null)
-        return setMessage('Si aceptaste la instalación, Guti aparecerá en tu pantalla de inicio.')
+        return showProfileToast('Si aceptaste la instalación, Guti aparecerá en tu pantalla de inicio.')
       }
 
       const ua=navigator.userAgent||''
       const isiOS=/iphone|ipad|ipod/i.test(ua)
       if(isiOS){
-        return setMessage('En iPhone: abre Compartir en Safari y elige “Agregar a pantalla de inicio”.')
+        return showProfileToast('En iPhone: abre Compartir en Safari y elige “Agregar a pantalla de inicio”.')
       }
 
-      return setMessage('Abre el menú del navegador y elige “Instalar app” o “Agregar a pantalla de inicio”.')
+      return showProfileToast('Abre el menú del navegador y elige “Instalar app” o “Agregar a pantalla de inicio”.')
     }catch{
-      setMessage('No se pudo iniciar la instalación. Usa el menú del navegador → Instalar app.')
+      showProfileToast('No se pudo iniciar la instalación. Usa el menú del navegador → Instalar app.')
     }
   }
 
@@ -629,7 +636,7 @@ export default function Page(){
       setCheckoutBusy(false)
       if(!response.ok||!result.ok){
         setCardToken(null);setCardReady(false)
-        setCardError(result.message||'No se pudo procesar el pago con tarjeta.')
+        setCardError(result.message||'No pudimos procesar el pago con tarjeta.')
         setCheckoutStep(2)
         return
       }
@@ -1256,7 +1263,7 @@ export default function Page(){
       <section className="profile-menu-card">
         <button onClick={()=>setShowAddressPicker(true)}><span><MapPinned/></span><div><b>Mis direcciones</b><small>{addresses.length} guardada{addresses.length===1?'':'s'}</small></div><ChevronRight/></button>
         <button onClick={()=>setTab('orders')}><span><ReceiptText/></span><div><b>Mis pedidos</b><small>Historial y seguimiento</small></div><ChevronRight/></button>
-        <button onClick={async()=>{const code=profile?.referral_code||'';if(code){await navigator.clipboard?.writeText(code);setMessage(`Código ${code} copiado. Compártelo con tus amigos.`)}else setMessage('Tu código de referido se está preparando.')}}><span><Gift/></span><div><b>Invitar y ganar</b><small>{profile?.referral_code?`Tu código: ${profile.referral_code}`:'Referidos Guti · gana 100 puntos'}</small></div><ChevronRight/></button>
+        <button onClick={async()=>{const code=profile?.referral_code||'';if(code){await navigator.clipboard?.writeText(code);showProfileToast(`Código ${code} copiado. Compártelo con tus amigos.`)}else showProfileToast('Tu código de referido se está preparando.')}}><span><Gift/></span><div><b>Invitar y ganar</b><small>{profile?.referral_code?`Tu código: ${profile.referral_code}`:'Referidos Guti · gana 100 puntos'}</small></div><ChevronRight/></button>
         <button onClick={enableClientNotifications}><span><Headphones/></span><div><b>Avisos de mis pedidos</b><small>Activa notificaciones del navegador</small></div><ChevronRight/></button>
         <button onClick={()=>setTab('favorites')}><span><Heart/></span><div><b>Favoritos</b><small>{favoriteIds.length} negocio{favoriteIds.length===1?'':'s'} guardado{favoriteIds.length===1?'':'s'}</small></div><ChevronRight/></button>
         {!profile?.referred_by&&<div className="referral-entry-v38"><input placeholder="Código de un amigo" value={referralInput} onChange={e=>setReferralInput(e.target.value.toUpperCase())}/><button onClick={applyReferral}>Aplicar</button></div>}
