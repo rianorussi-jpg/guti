@@ -193,7 +193,7 @@ export default function Page(){
     if(!referralInput.trim())return
     const {error}=await supabase.rpc('apply_referral_code_v38',{p_code:referralInput.trim()})
     if(error)return setMessage(error.message)
-    setReferralInput('');setMessage('Código de referido aplicado. Cuando completes tu primer pedido, tu amigo recibirá su recompensa.')
+    setReferralInput('');setMessage('Código de referido aplicado. Cuando completes un primer pedido, tu amigo recibirá su recompensa.')
   }
 
   async function reorderOrder(order){
