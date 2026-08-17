@@ -3,9 +3,10 @@ import { useEffect,useMemo,useState } from 'react'
 import {
   Bike,LogOut,MapPin,Phone,Navigation,Clock3,PackageCheck,CheckCircle2,
   Wallet,CalendarDays,History,ChevronRight,RefreshCw,Store,AlertCircle,
-  Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards,CreditCard,Banknote,ShieldCheck,X
+  Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards,CreditCard,Banknote,ShieldCheck,X,Smartphone
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
+import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
 
 const statusLabel={
   assigned:'Ve por el pedido',
@@ -34,6 +35,9 @@ export default function Page(){
   const [depositAmount,setDepositAmount]=useState('')
   const [depositReference,setDepositReference]=useState('')
   const [deliveryConfirm,setDeliveryConfirm]=useState(null)
+
+  useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
+  useEffect(()=>{const h=e=>{e.preventDefault();window.__gutiCourierInstallPrompt=e};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[])
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
@@ -71,10 +75,18 @@ export default function Page(){
     return()=>supabase.removeChannel(channel)
   },[session?.user?.id])
 
+  async function installCourierApp(){
+    try{
+      const e=window.__gutiCourierInstallPrompt
+      if(e){await e.prompt();window.__gutiCourierInstallPrompt=null;setMsg('Guti Repartidor listo para instalarse.')}
+      else setMsg('En iPhone usa Compartir → Agregar a pantalla de inicio. En Android usa Instalar app.')
+    }catch{}
+  }
+
   async function enableNotifications(){
-    if(!('Notification' in window))return setMsg('Este navegador no permite notificaciones.')
-    const p=await Notification.requestPermission()
-    setMsg(p==='granted'?'Avisos del navegador activados.':'No se activaron los avisos.')
+    if(!session?.user?.id)return setMsg('Inicia sesión para activar avisos.')
+    try{await enableGutiPush(supabase,session.user.id,'repartidor');setMsg('Push activado. Te avisaremos cuando haya trabajo disponible.')}
+    catch(e){setMsg(e.message||'No se pudieron activar los avisos.')}
   }
 
   async function markNotificationsRead(){
@@ -347,6 +359,6 @@ export default function Page(){
       </section>
     </div>}
 
-    {showNotifications&&<div className="courier-drawer-backdrop" onClick={()=>setShowNotifications(false)}><aside className="courier-drawer" onClick={e=>e.stopPropagation()}><header><div><small>AVISOS GUTI</small><h2>Notificaciones</h2></div><button onClick={()=>setShowNotifications(false)}>×</button></header><button className="drawer-read" onClick={markNotificationsRead}><CheckCheck/>Marcar todo leído</button><div>{notifications.map(n=><article className={!n.read_at?'unread':''} key={n.id}><Bell/><span><b>{n.title}</b><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString('es-MX')}</small></span></article>)}</div><button className="drawer-enable" onClick={enableNotifications}>Activar avisos del navegador</button></aside></div>}
+    {showNotifications&&<div className="courier-drawer-backdrop" onClick={()=>setShowNotifications(false)}><aside className="courier-drawer" onClick={e=>e.stopPropagation()}><header><div><small>AVISOS GUTI</small><h2>Notificaciones</h2></div><button onClick={()=>setShowNotifications(false)}>×</button></header><button className="drawer-read" onClick={markNotificationsRead}><CheckCheck/>Marcar todo leído</button><div>{notifications.map(n=><article className={!n.read_at?'unread':''} key={n.id}><Bell/><span><b>{n.title}</b><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString('es-MX')}</small></span></article>)}</div><button className="drawer-enable" onClick={enableNotifications}>Activar avisos del navegador</button><button className="drawer-enable drawer-install" onClick={installCourierApp}><Smartphone/>Instalar Guti Repartidor</button></aside></div>}
   </main>
 }

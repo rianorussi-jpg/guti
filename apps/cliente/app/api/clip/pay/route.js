@@ -20,6 +20,7 @@ export async function POST(request){
     if(!jwt)return fail('Sesión no válida.',401)
 
     const admin=createClient(supabaseUrl,serviceRole,{auth:{persistSession:false,autoRefreshToken:false}})
+    const userClient=createClient(supabaseUrl,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,{global:{headers:{Authorization:`Bearer ${jwt}`}},auth:{persistSession:false,autoRefreshToken:false}})
     const {data:{user}}=await admin.auth.getUser(jwt)
     if(!user)return fail('Tu sesión expiró.',401)
 
@@ -88,7 +89,15 @@ export async function POST(request){
     }
 
     subtotal=Math.round(subtotal*100)/100
-    const total=Math.round((subtotal+DELIVERY_FEE)*100)/100
+    const couponCode=String(body.coupon_code||'').trim().toUpperCase()||null
+    const pointsRequested=Math.max(0,Number(body.points_requested)||0)
+    const {data:quoteData,error:quoteError}=await userClient.rpc('quote_checkout_v38',{
+      p_merchant_id:merchantId,p_subtotal:subtotal,p_coupon_code:couponCode,p_points_requested:pointsRequested
+    })
+    if(quoteError)return fail(quoteError.message||'No pudimos calcular tus descuentos.')
+    const quote=Array.isArray(quoteData)?quoteData[0]:quoteData
+    const deliveryFee=Number(quote?.delivery_fee??DELIVERY_FEE)
+    const total=Number(quote?.total??Math.round((subtotal+DELIVERY_FEE)*100)/100)
 
     const clipRes=await fetch('https://api.payclip.com/payments',{
       method:'POST',
@@ -138,6 +147,8 @@ export async function POST(request){
             merchant_delivery_mode:merchant.delivery_mode||'guti',
             subtotal,
             total,
+            coupon_code:couponCode,
+            points_requested:Number(quote?.points_used||0),
             items:normalizedItems
           }
         }
@@ -182,8 +193,9 @@ export async function POST(request){
 
     const {data:order,error:orderError}=await admin.from('orders').insert({
       customer_id:user.id,merchant_id:merchantId,address_id:addressId,status:'pending',
-      delivery_mode:merchant.delivery_mode||'guti',subtotal,delivery_fee:DELIVERY_FEE,
-      discount:0,total,payment_method:'card',payment_status:'paid',notes:String(body.notes||'').slice(0,500)
+      delivery_mode:merchant.delivery_mode||'guti',subtotal,delivery_fee:deliveryFee,
+      discount:0,total,coupon_code:couponCode,points_used:Number(quote?.points_used||0),
+      payment_method:'card',payment_status:'paid',notes:String(body.notes||'').slice(0,500)
     }).select().single()
     if(orderError)return fail('El pago fue aprobado, pero no pudimos crear el pedido. Contacta a soporte Guti y no vuelvas a pagar.',500,{clip_payment_id:clip.id})
 

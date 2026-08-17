@@ -128,3 +128,7 @@
 
 /* Admin v3.7 — cobro de entrega */
 .admin-payment-summary{display:grid;background:#eef9f2;border:1px solid #d6eadc;border-radius:10px;padding:9px;margin:9px 0}.admin-payment-summary.cash{background:#fff7e6;border-color:#edd8a6}.admin-payment-summary b{font-size:9px;text-transform:capitalize}.admin-payment-summary span{font-size:8px;color:#777;margin-top:2px}
+
+/* Admin v3.8 — promociones / cierre / auditoría */
+.coupon-builder-v38{margin-bottom:14px}.coupon-form-v38{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.coupon-form-v38 label{display:grid;gap:4px;font-size:9px;font-weight:800}.coupon-form-v38 input,.coupon-form-v38 select{min-width:0;border:1px solid #ddd;border-radius:9px;padding:9px;background:#fff}.coupon-form-v38>button{border:0;background:#f4510b;color:#fff;border-radius:10px;font-weight:900}.check-v38{display:flex!important;align-items:center;gap:6px!important}.check-v38 input{width:auto}
+@media(max-width:850px){.coupon-form-v38{grid-template-columns:1fr 1fr}}@media(max-width:520px){.coupon-form-v38{grid-template-columns:1fr}}

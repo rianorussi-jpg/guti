@@ -2,12 +2,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
-  Headphones, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
+  Headphones, Smartphone, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
   IceCreamBowl, Grid2X2, Store, Star, Clock3, ArrowRight, ArrowLeft,
   Plus, Minus, Trash2, X, WalletCards, Gift, Heart, MapPinned, LogOut,
   ChevronRight, LocateFixed, Check, Navigation, BadgePercent
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
+import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
 
 const categoryDefs = [
   {key:'food', label:'Comida', image:'/categories/comida.svg', types:['restaurant']},
@@ -95,6 +96,16 @@ export default function Page(){
   const [cardToken,setCardToken]=useState(null)
   const [cardReady,setCardReady]=useState(false)
   const [cardError,setCardError]=useState('')
+  const [supportOpen,setSupportOpen]=useState(false)
+  const [supportTopic,setSupportTopic]=useState('pedido')
+  const [couponCode,setCouponCode]=useState('')
+  const [checkoutQuote,setCheckoutQuote]=useState(null)
+  const [pointsToUse,setPointsToUse]=useState(0)
+  const [referralInput,setReferralInput]=useState('')
+
+  useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
+  useEffect(()=>{const h=e=>{e.preventDefault();window.__gutiInstallPrompt=e};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[])
+
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>applySession(data.session))
@@ -119,14 +130,53 @@ export default function Page(){
   },[session?.user?.id])
 
   async function enableClientNotifications(){
-    if(!('Notification' in window))return setMessage('Este navegador no permite notificaciones.')
-    const permission=await Notification.requestPermission()
-    setMessage(permission==='granted'?'Avisos de Guti activados.':'No se activaron las notificaciones.')
+    if(!session?.user?.id)return setMessage('Inicia sesión para activar avisos.')
+    try{await enableGutiPush(supabase,session.user.id,'cliente');setMessage('Push de Guti activado. Te avisaremos aunque no tengas Guti abierto.')}
+    catch(e){setMessage(e.message||'No se pudieron activar las notificaciones.')}
   }
 
-  function openSupport(){
-    const text=encodeURIComponent('Hola Guti, necesito ayuda con mi pedido.')
+  function openSupport(){setSupportOpen(true)}
+  function sendSupport(){
+    const active=activeOrders?.[0]
+    const labels={pedido:'Problema con mi pedido',pago:'Pago o cobro',reembolso:'Cancelación / reembolso',otro:'Otra ayuda'}
+    const text=encodeURIComponent(`Hola Guti, necesito ayuda. Motivo: ${labels[supportTopic]}.${active?.id?` Pedido #${active.id.slice(0,8)}.`:''} Mi cuenta: ${session?.user?.email||'sin sesión'}.`)
     window.open(`https://wa.me/525623449135?text=${text}`,'_blank','noopener,noreferrer')
+  }
+
+  async function quoteCheckout(group){
+    if(!session||!group)return null
+    const {data,error}=await supabase.rpc('quote_checkout_v38',{
+      p_merchant_id:group.merchantId,p_subtotal:group.subtotal,p_coupon_code:couponCode||null,p_points_requested:Number(pointsToUse||0)
+    })
+    if(error){setMessage(error.message);return null}
+    const q=Array.isArray(data)?data[0]:data
+    setCheckoutQuote(q||null)
+    if(q?.coupon_message&&couponCode)setMessage(q.coupon_message)
+    return q
+  }
+
+  async function applyReferral(){
+    if(!referralInput.trim())return
+    const {error}=await supabase.rpc('apply_referral_code_v38',{p_code:referralInput.trim()})
+    if(error)return setMessage(error.message)
+    setReferralInput('');setMessage('Código de referido aplicado. Cuando completes tu primer pedido, tu amigo recibirá su recompensa.')
+  }
+
+  async function reorderOrder(order){
+    const {data:items,error}=await supabase.from('order_items').select('*').eq('order_id',order.id)
+    if(error||!items?.length)return setMessage(error?.message||'No encontramos productos para repetir.')
+    const ids=[...new Set(items.map(i=>i.product_id).filter(Boolean))]
+    const {data:products}=await supabase.from('products').select('*').in('id',ids).eq('is_available',true)
+    const pmap=new Map((products||[]).map(x=>[x.id,x]))
+    let count=0
+    for(const item of items){
+      const prod=pmap.get(item.product_id)
+      if(!prod)continue
+      addConfiguredItem(prod,item.selected_options||[],Number(item.quantity||1),'')
+      count++
+    }
+    if(count){setMessage('Agregamos tu pedido anterior al carrito. Revísalo antes de confirmar.');setShowCart(true)}
+    else setMessage('Los productos de ese pedido ya no están disponibles.')
   }
 
   useEffect(()=>{
@@ -157,20 +207,35 @@ export default function Page(){
   },[cart,session?.user?.id])
 
   useEffect(()=>{
-    const key=session?.user?.id?`guti-favorites:${session.user.id}`:'guti-favorites:guest'
+    if(session?.user?.id)return
     try{
-      const saved=JSON.parse(localStorage.getItem(key)||'[]')
+      const saved=JSON.parse(localStorage.getItem('guti-favorites:guest')||'[]')
       setFavoriteIds(Array.isArray(saved)?saved:[])
     }catch{setFavoriteIds([])}
   },[session?.user?.id])
 
   useEffect(()=>{
-    const key=session?.user?.id?`guti-favorites:${session.user.id}`:'guti-favorites:guest'
-    localStorage.setItem(key,JSON.stringify(favoriteIds))
+    if(session?.user?.id)return
+    localStorage.setItem('guti-favorites:guest',JSON.stringify(favoriteIds))
   },[favoriteIds,session?.user?.id])
 
-  function toggleFavorite(id){
-    setFavoriteIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])
+  async function loadFavorites(uid){
+    const {data,error}=await supabase.from('favorite_merchants').select('merchant_id').eq('user_id',uid)
+    if(error){console.error(error);return}
+    setFavoriteIds((data||[]).map(x=>x.merchant_id))
+  }
+
+  async function toggleFavorite(id){
+    const exists=favoriteIds.includes(id)
+    setFavoriteIds(prev=>exists?prev.filter(x=>x!==id):[...prev,id])
+    if(!session?.user?.id)return
+    const res=exists
+      ? await supabase.from('favorite_merchants').delete().eq('user_id',session.user.id).eq('merchant_id',id)
+      : await supabase.from('favorite_merchants').insert({user_id:session.user.id,merchant_id:id})
+    if(res.error){
+      setFavoriteIds(prev=>exists?[...prev,id]:prev.filter(x=>x!==id))
+      setMessage(res.error.message)
+    }
   }
 
   useEffect(()=>{
@@ -213,7 +278,8 @@ export default function Page(){
       loadProfile(s.user.id),
       loadAddresses(s.user.id),
       loadActiveOrders(s.user.id),
-      loadOrderHistory(s.user.id)
+      loadOrderHistory(s.user.id),
+      loadFavorites(s.user.id)
     ])
   }
 
@@ -498,7 +564,9 @@ export default function Page(){
     if(!session||!group||!group.items.length)return
     if(!selectedAddress){setCheckoutStep(1);return}
 
-    if(paymentMethod==='guti_balance' && Number(profile?.guti_balance||0) < group.total){
+    const q=await quoteCheckout(group)
+    const finalTotal=Number(q?.total??group.total)
+    if(paymentMethod==='guti_balance' && Number(profile?.guti_balance||0) < finalTotal){
       setMessage('No tienes suficiente Guti Balance para este pedido.')
       return
     }
@@ -524,6 +592,9 @@ export default function Page(){
           merchant_id:merchantId,
           address_id:selectedAddress.id,
           notes:checkoutNotes,
+          coupon_code:couponCode||null,
+          points_requested:Number(pointsToUse||0),
+          customer_phone:profile?.phone||'',
           items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[]}))
         })
       })
@@ -536,7 +607,7 @@ export default function Page(){
         return
       }
       setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
-      setCheckoutNotes('');setCheckoutMerchantId(null);setShowCheckout(false)
+      setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setShowCheckout(false)
       setCardToken(null);setCardReady(false)
       await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
       setTrackingOrderId(result.order_id);setTab('home');setShowTracking(true)
@@ -545,14 +616,15 @@ export default function Page(){
 
     const {data:order,error:oerr}=await supabase.from('orders').insert({
       customer_id:session.user.id,merchant_id:merchantId,address_id:selectedAddress.id,status:'pending',
-      delivery_mode:merchant?.delivery_mode||'guti',subtotal:group.subtotal,delivery_fee:45,discount:0,total:group.total,
+      delivery_mode:merchant?.delivery_mode||'guti',subtotal:group.subtotal,delivery_fee:45,discount:0,total:finalTotal,
+      coupon_code:couponCode||null,points_used:Number(pointsToUse||0),
       payment_method:paymentMethod,payment_status:'pending',notes:checkoutNotes
     }).select().single()
     if(oerr){setCheckoutBusy(false);setMessage(oerr.message);return}
     const items=group.items.map(x=>({order_id:order.id,product_id:x.id,product_name:x.name,unit_price:Number(x.price),quantity:x.qty,line_total:Number(x.price)*x.qty,selected_options:x.selected_options||[]}))
     const {error:ierr}=await supabase.from('order_items').insert(items)
     if(ierr){setCheckoutBusy(false);setMessage(ierr.message);return}
-    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCheckoutMerchantId(null);setShowCheckout(false);setCheckoutBusy(false)
+    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setShowCheckout(false);setCheckoutBusy(false)
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
     setTrackingOrderId(order.id);setTab('home');setShowTracking(true)
   }
@@ -565,6 +637,16 @@ export default function Page(){
     const matchesCategory=category==='all'||!c?.types?.length||c.types.includes(m.merchant_type)
     return matchesQuery&&matchesCategory
   })
+
+  function SupportModal(){
+    if(!supportOpen)return null
+    return <div className="modal-backdrop" onClick={()=>setSupportOpen(false)}><section className="modal-card support-modal-v38" onClick={e=>e.stopPropagation()}>
+      <button className="modal-close" onClick={()=>setSupportOpen(false)}><X/></button>
+      <small className="eyebrow">SOPORTE GUTI</small><h2>¿En qué te ayudamos?</h2><p className="muted">Al continuar abriremos WhatsApp con la información básica de tu cuenta y pedido.</p>
+      <div className="support-topics-v38">{[['pedido','Problema con mi pedido'],['pago','Pago o cobro'],['reembolso','Cancelación / reembolso'],['otro','Otra ayuda']].map(([id,label])=><button className={supportTopic===id?'active':''} key={id} onClick={()=>setSupportTopic(id)}>{label}</button>)}</div>
+      <button className="primary-wide" onClick={sendSupport}>Hablar con soporte</button>
+    </section></div>
+  }
 
   function AuthModal(){
     if(!showAuth)return null
@@ -661,7 +743,7 @@ export default function Page(){
                   {group.merchant?.logo_url?<img src={group.merchant.logo_url} alt=""/>:<Store/>}
                 </span>
                 <div><small>TU CARRITO DE</small><h3>{group.merchant?.name||'Negocio'}</h3><em>Envío $45</em></div>
-                <strong>${group.total.toFixed(2)}</strong>
+                <strong>${Number(checkoutQuote?.total??group.total).toFixed(2)}</strong>
               </header>
 
               <div className="cart-items">
@@ -838,9 +920,17 @@ export default function Page(){
             <div className="checkout-review-line"><span>Dirección</span><b>{selectedAddress?.label} · {selectedAddress?.formatted_address}</b></div>
             <div className="checkout-review-line"><span>Pago</span><b>{paymentMethod==='card'?'Tarjeta · Clip seguro':methods.find(m=>m.id===paymentMethod)?.label}</b></div>
             <div className="checkout-review-line"><span>Subtotal</span><b>${group.subtotal.toFixed(2)}</b></div>
-            <div className="checkout-review-line"><span>Envío</span><b>$45.00</b></div>
-            <div className="checkout-review-line total"><span>Total</span><b>${group.total.toFixed(2)}</b></div>
+            <div className="checkout-review-line"><span>Envío</span><b>${Number(checkoutQuote?.delivery_fee??45).toFixed(2)}</b></div>
+            {Number(checkoutQuote?.coupon_discount||0)>0&&<div className="checkout-review-line discount"><span>Cupón</span><b>-${Number(checkoutQuote.coupon_discount).toFixed(2)}</b></div>}
+            {Number(checkoutQuote?.points_discount||0)>0&&<div className="checkout-review-line discount"><span>{checkoutQuote.points_used} Guti Puntos</span><b>-${Number(checkoutQuote.points_discount).toFixed(2)}</b></div>}
+            <div className="checkout-review-line total"><span>Total</span><b>${Number(checkoutQuote?.total??group.total).toFixed(2)}</b></div>
           </div>
+
+          <section className="checkout-rewards-v38">
+            <div><small>AHORRA EN GUTI</small><h4>Cupón y Guti Puntos</h4></div>
+            <div className="coupon-row-v38"><input placeholder="Código de cupón" value={couponCode} onChange={e=>setCouponCode(e.target.value.toUpperCase())}/><button onClick={()=>quoteCheckout(group)}>Aplicar</button></div>
+            <div className="points-row-v38"><div><b>{profile?.points||0} puntos disponibles</b><small>100 puntos = $10 · máximo 25% del subtotal</small></div><input type="number" min="0" max={profile?.points||0} step="10" value={pointsToUse} onChange={e=>setPointsToUse(Math.max(0,Number(e.target.value)||0))}/><button onClick={()=>quoteCheckout(group)}>Usar</button></div>
+          </section>
 
           <label className="checkout-note-label">Nota general</label>
           <textarea className="checkout-final-note" rows="2" placeholder="Instrucciones para el negocio (opcional)" value={checkoutNotes} onChange={e=>setCheckoutNotes(e.target.value)}/>
@@ -848,7 +938,7 @@ export default function Page(){
           <div className="checkout-nav-buttons">
             <button className="checkout-back" onClick={()=>setCheckoutStep(2)}><ArrowLeft/>Atrás</button>
             <button className="checkout-confirm" disabled={checkoutBusy} onClick={createOrderFromCheckout}>
-              {checkoutBusy?'Enviando pedido...':<>Confirmar pedido <b>${group.total.toFixed(2)}</b></>}
+              {checkoutBusy?'Enviando pedido...':<>Confirmar pedido <b>${Number(checkoutQuote?.total??group.total).toFixed(2)}</b></>}
             </button>
           </div>
         </section>}
@@ -1105,7 +1195,7 @@ export default function Page(){
         {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order" key={o.id}>
           <span className={`history-icon ${o.status}`}><ReceiptText/></span>
           <div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status)}</em></div>
-          <strong>${Number(o.total).toFixed(2)}</strong>
+          <div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<button onClick={()=>reorderOrder(o)}>Pedir otra vez</button>}</div>
         </article>)}
         {!orderHistory.some(o=>['delivered','cancelled'].includes(o.status))&&<div className="empty-state small"><ReceiptText/><h3>Aún no hay historial</h3><p>Tus pedidos completados aparecerán aquí.</p></div>}
       </div>
@@ -1141,7 +1231,9 @@ export default function Page(){
         <button onClick={()=>setTab('orders')}><span><ReceiptText/></span><div><b>Mis pedidos</b><small>Historial y seguimiento</small></div><ChevronRight/></button>
         <button onClick={async()=>{const code=profile?.referral_code||'';if(code){await navigator.clipboard?.writeText(code);setMessage(`Código ${code} copiado. Compártelo con tus amigos.`)}else setMessage('Tu código de referido se está preparando.')}}><span><Gift/></span><div><b>Invitar y ganar</b><small>{profile?.referral_code?`Tu código: ${profile.referral_code}`:'Referidos Guti · gana 100 puntos'}</small></div><ChevronRight/></button>
         <button onClick={enableClientNotifications}><span><Headphones/></span><div><b>Avisos de mis pedidos</b><small>Activa notificaciones del navegador</small></div><ChevronRight/></button>
-        <button><span><Heart/></span><div><b>Favoritos</b><small>Muy pronto</small></div><ChevronRight/></button>
+        <button onClick={()=>setTab('favorites')}><span><Heart/></span><div><b>Favoritos</b><small>{favoriteIds.length} negocio{favoriteIds.length===1?'':'s'} guardado{favoriteIds.length===1?'':'s'}</small></div><ChevronRight/></button>
+        {!profile?.referred_by&&<div className="referral-entry-v38"><input placeholder="Código de un amigo" value={referralInput} onChange={e=>setReferralInput(e.target.value.toUpperCase())}/><button onClick={applyReferral}>Aplicar</button></div>}
+        <button onClick={async()=>{try{const promptEvent=window.__gutiInstallPrompt;if(promptEvent){await promptEvent.prompt();window.__gutiInstallPrompt=null}else setMessage('En iPhone usa Compartir → Agregar a pantalla de inicio. En Android busca “Instalar app” en el menú del navegador.')}catch{}}}><span><Smartphone/></span><div><b>Instalar Guti</b><small>Úsala como una app en tu pantalla de inicio</small></div><ChevronRight/></button>
       </section>
 
       <button className="logout-button" onClick={signOut}><LogOut/> Cerrar sesión</button>
@@ -1226,7 +1318,7 @@ export default function Page(){
 
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
-      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
+      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{SupportModal()}{AuthModal()}{AddressModal()}
     </main>
   }
 
@@ -1242,7 +1334,7 @@ export default function Page(){
       {tab==='profile'&&ProfileView()}
     </div>
     <BottomNav/>
-    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
+    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{SupportModal()}{AuthModal()}{AddressModal()}
   </main>
 }
 

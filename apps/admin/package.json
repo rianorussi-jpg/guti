@@ -10,7 +10,8 @@
     "@supabase/supabase-js": "latest",
     "next": "16.3.0",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "web-push": "^3.6.7"
   },
   "name": "guti-admin",
   "engines": {

@@ -8,9 +8,10 @@ import {
   Camera, MapPin, Phone, FileText, BadgePercent, AlertCircle, ChevronDown,
   CircleDollarSign, Boxes, Tag, ListPlus, CheckCircle2, XCircle, Loader2,
   RefreshCw, Menu, ArrowLeft, Copy, ExternalLink, Volume2, VolumeX, Timer, PauseCircle,
-  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck, Banknote, CreditCard
+  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck, Banknote, CreditCard, ChefHat, Smartphone
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
+import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
 
 const statusMeta = {
   pending:{label:'Nuevo',tone:'orange'},
@@ -62,6 +63,7 @@ export default function Page(){
   const [notifications,setNotifications]=useState([])
   const [showNotifications,setShowNotifications]=useState(false)
   const [settlements,setSettlements]=useState([])
+  const [kitchenItems,setKitchenItems]=useState({})
   const [latestNewOrder,setLatestNewOrder]=useState(null)
   const [soundEnabled,setSoundEnabled]=useState(false)
   const [showCategoryCreator,setShowCategoryCreator]=useState(false)
@@ -81,6 +83,9 @@ export default function Page(){
   const [uploading,setUploading]=useState('')
 
   const [sidebarOpen,setSidebarOpen]=useState(false)
+
+  useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
+  useEffect(()=>{const h=e=>{e.preventDefault();window.__gutiBusinessInstallPrompt=e};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[])
 
   useEffect(()=>{
     try{setSoundEnabled(localStorage.getItem('guti-merchant-sound')==='1')}catch{}
@@ -167,6 +172,23 @@ export default function Page(){
     return()=>{clearInterval(fallback);supabase.removeChannel(channel)}
   },[merchant?.id,session?.user?.id])
 
+  async function loadKitchenItems(){
+    const activeIds=orders.filter(o=>!['delivered','cancelled','on_the_way'].includes(o.status)).map(o=>o.id)
+    if(!activeIds.length){setKitchenItems({});return}
+    const {data}=await supabase.from('order_items').select('*').in('order_id',activeIds).order('id')
+    const map={}
+    for(const item of data||[]){(map[item.order_id]||(map[item.order_id]=[])).push(item)}
+    setKitchenItems(map)
+  }
+
+  async function installBusinessApp(){
+    try{
+      const e=window.__gutiBusinessInstallPrompt
+      if(e){await e.prompt();window.__gutiBusinessInstallPrompt=null;setMsg('Guti Negocios listo para instalarse.')}
+      else setMsg('En iPhone usa Compartir → Agregar a pantalla de inicio. En Android usa Instalar app.')
+    }catch{}
+  }
+
   async function loadNotifications(uid){
     const {data}=await supabase.from('notifications').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(40)
     setNotifications(data||[])
@@ -179,9 +201,9 @@ export default function Page(){
   }
 
   async function enableBusinessNotifications(){
-    if(!('Notification' in window))return setMsg('Este navegador no permite notificaciones.')
-    const p=await Notification.requestPermission()
-    setMsg(p==='granted'?'Avisos del navegador activados.':'No se activaron los avisos.')
+    if(!session?.user?.id)return setMsg('Inicia sesión para activar avisos.')
+    try{await enableGutiPush(supabase,session.user.id,'negocio');setMsg('Push activado. Los pedidos nuevos podrán avisarte aunque cierres el panel.')}
+    catch(e){setMsg(e.message||'No se pudieron activar los avisos.')}
   }
 
   async function loadSettlements(merchantId){
@@ -566,9 +588,12 @@ export default function Page(){
     return !q||p.name.toLowerCase().includes(q)||(p.description||'').toLowerCase().includes(q)
   })
 
+  useEffect(()=>{if(tab==='kitchen'&&orders.length)loadKitchenItems()},[tab,orders.map(o=>`${o.id}:${o.status}`).join('|')])
+
   const nav=[
     ['dashboard','Resumen',LayoutDashboard],
     ['orders','Pedidos',ReceiptText],
+    ['kitchen','Modo cocina',ChefHat],
     ['catalog','Catálogo',PackageSearch],
     ['appearance','Mi negocio',Store],
     ['hours','Horarios',Clock3],
@@ -671,6 +696,33 @@ export default function Page(){
               <button onClick={()=>setTab('catalog')}><span><PackageSearch/></span><div><b>Administrar catálogo</b><small>{products.length} productos</small></div><ChevronRight/></button>
             </section>
           </div>
+        </>}
+
+        {tab==='kitchen'&&<>
+          <section className="page-intro kitchen-intro"><div><small>MODO COCINA</small><h2>Comandas en vivo</h2><p>Pantalla simple para tablet: nuevos → preparando → listos.</p></div><button className="secondary-btn" onClick={()=>{loadOrders(merchant.id);loadKitchenItems()}}><RefreshCw/>Actualizar</button></section>
+          <section className="kitchen-board">
+            {[
+              {key:'new',title:'Nuevos',statuses:['pending','accepted']},
+              {key:'preparing',title:'Preparando',statuses:['preparing']},
+              {key:'ready',title:'Listos',statuses:['ready','assigned','picked_up']}
+            ].map(col=><div className={`kitchen-column ${col.key}`} key={col.key}>
+              <header><h3>{col.title}</h3><span>{orders.filter(o=>col.statuses.includes(o.status)).length}</span></header>
+              <div className="kitchen-stack">
+                {orders.filter(o=>col.statuses.includes(o.status)).map(o=><article className={`kitchen-ticket ${newOrderIds.includes(o.id)?'fresh':''}`} key={o.id}>
+                  <div className="kitchen-ticket-top"><div><small>#{o.id.slice(0,6)}</small><b>{o.profiles?.full_name||'Cliente Guti'}</b></div><strong>{new Date(o.created_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</strong></div>
+                  <div className="kitchen-products">{(kitchenItems[o.id]||[]).map(i=><div key={i.id}><b>{i.quantity}× {i.product_name}</b>{(i.selected_options||[]).map((op,idx)=><small key={idx}>{op.option_name}</small>)}</div>)}</div>
+                  {o.notes&&<p className="kitchen-note">Nota: {o.notes}</p>}
+                  <div className="kitchen-actions">
+                    {o.status==='pending'&&<button onClick={()=>openOrder(o)}>Abrir y aceptar</button>}
+                    {o.status==='accepted'&&<button onClick={()=>status(o,'preparing')}>Empezar preparación</button>}
+                    {o.status==='preparing'&&<button onClick={()=>status(o,'ready')}>Marcar listo</button>}
+                    {['ready','assigned','picked_up'].includes(o.status)&&<span>✓ Esperando salida</span>}
+                  </div>
+                </article>)}
+                {!orders.some(o=>col.statuses.includes(o.status))&&<div className="kitchen-empty">Sin pedidos</div>}
+              </div>
+            </div>)}
+          </section>
         </>}
 
         {tab==='orders'&&<>
