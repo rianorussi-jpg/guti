@@ -7,7 +7,8 @@ import {
   ShoppingBag, Bike, Users, Star, CalendarDays, Save, ToggleLeft, ToggleRight,
   Camera, MapPin, Phone, FileText, BadgePercent, AlertCircle, ChevronDown,
   CircleDollarSign, Boxes, Tag, ListPlus, CheckCircle2, XCircle, Loader2,
-  RefreshCw, Menu, ArrowLeft, Copy, ExternalLink
+  RefreshCw, Menu, ArrowLeft, Copy, ExternalLink, Volume2, VolumeX, Timer, PauseCircle,
+  PlayCircle, Percent, Sparkles, AlarmClock, Layers3
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 
@@ -30,7 +31,7 @@ const dayNames = [
 
 const emptyProduct = {
   id:null,name:'',description:'',price:'',category_id:'',image_url:'',
-  is_available:true,sort_order:0
+  is_available:true,sort_order:0,promo_price:'',promo_starts_at:'',promo_ends_at:''
 }
 
 export default function Page(){
@@ -51,7 +52,11 @@ export default function Page(){
   const [selectedOrder,setSelectedOrder]=useState(null)
   const [orderItems,setOrderItems]=useState([])
   const [newOrderIds,setNewOrderIds]=useState([])
+  const [latestNewOrder,setLatestNewOrder]=useState(null)
+  const [soundEnabled,setSoundEnabled]=useState(false)
+  const [showCategoryCreator,setShowCategoryCreator]=useState(false)
   const seenOrderIds=useRef(new Set())
+  const audioCtxRef=useRef(null)
 
   const [showProduct,setShowProduct]=useState(false)
   const [productForm,setProductForm]=useState(emptyProduct)
@@ -61,11 +66,45 @@ export default function Page(){
 
   const [merchantForm,setMerchantForm]=useState({
     name:'',description:'',phone:'',address:'',cover_url:'',logo_url:'',
-    delivery_mode:'guti',accepts_orders:true
+    delivery_mode:'guti',accepts_orders:true,manual_pause:false,schedule_enabled:true,prep_minutes:25
   })
   const [uploading,setUploading]=useState('')
 
   const [sidebarOpen,setSidebarOpen]=useState(false)
+
+  useEffect(()=>{
+    try{setSoundEnabled(localStorage.getItem('guti-merchant-sound')==='1')}catch{}
+  },[])
+
+  function playOrderSound(){
+    if(!soundEnabled)return
+    try{
+      const AudioCtx=window.AudioContext||window.webkitAudioContext
+      if(!AudioCtx)return
+      const ctx=audioCtxRef.current||new AudioCtx()
+      audioCtxRef.current=ctx
+      if(ctx.state==='suspended')ctx.resume()
+      const now=ctx.currentTime
+      ;[0,0.18,0.36].forEach((offset,i)=>{
+        const osc=ctx.createOscillator()
+        const gain=ctx.createGain()
+        osc.type='sine'
+        osc.frequency.value=i===1?880:1040
+        gain.gain.setValueAtTime(0.0001,now+offset)
+        gain.gain.exponentialRampToValueAtTime(0.16,now+offset+0.015)
+        gain.gain.exponentialRampToValueAtTime(0.0001,now+offset+0.13)
+        osc.connect(gain);gain.connect(ctx.destination)
+        osc.start(now+offset);osc.stop(now+offset+0.15)
+      })
+    }catch{}
+  }
+
+  function toggleSound(){
+    const next=!soundEnabled
+    setSoundEnabled(next)
+    try{localStorage.setItem('guti-merchant-sound',next?'1':'0')}catch{}
+    if(next)setTimeout(()=>playOrderSound(),20)
+  }
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
@@ -89,6 +128,8 @@ export default function Page(){
         filter:`merchant_id=eq.${merchant.id}`
       },payload=>{
         setNewOrderIds(prev=>prev.includes(payload.new.id)?prev:[payload.new.id,...prev])
+        setLatestNewOrder(payload.new)
+        playOrderSound()
         loadOrders(merchant.id)
       })
       .on('postgres_changes',{
@@ -97,7 +138,22 @@ export default function Page(){
       },()=>loadOrders(merchant.id))
       .subscribe()
 
-    const fallback=setInterval(()=>loadOrders(merchant.id),12000)
+    const refreshOperations=async()=>{
+      await supabase.rpc('sync_merchant_operational_state',{p_merchant_id:merchant.id})
+      await Promise.all([loadOrders(merchant.id),loadProducts(merchant.id)])
+      const {data:fresh}=await supabase.from('merchants').select('*').eq('id',merchant.id).maybeSingle()
+      if(fresh){
+        setMerchant(fresh)
+        setMerchantForm(prev=>({...prev,
+          accepts_orders:fresh.accepts_orders!==false,
+          manual_pause:!!fresh.manual_pause,
+          schedule_enabled:fresh.schedule_enabled!==false,
+          prep_minutes:Number(fresh.prep_minutes||25)
+        }))
+      }
+    }
+    refreshOperations()
+    const fallback=setInterval(refreshOperations,30000)
     return()=>{clearInterval(fallback);supabase.removeChannel(channel)}
   },[merchant?.id,session?.user?.id])
 
@@ -115,7 +171,8 @@ export default function Page(){
     setMerchantForm({
       name:m.name||'',description:m.description||'',phone:m.phone||'',address:m.address||'',
       cover_url:m.cover_url||'',logo_url:m.logo_url||'',delivery_mode:m.delivery_mode||'guti',
-      accepts_orders:m.accepts_orders!==false
+      accepts_orders:m.accepts_orders!==false,manual_pause:!!m.manual_pause,
+      schedule_enabled:m.schedule_enabled!==false,prep_minutes:Number(m.prep_minutes||25)
     })
 
     await Promise.all([
@@ -142,6 +199,7 @@ export default function Page(){
   }
 
   async function loadProducts(merchantId){
+    await supabase.rpc('sync_product_operational_state',{p_merchant_id:merchantId})
     const {data,error}=await supabase
       .from('products')
       .select('*,categories(name)')
@@ -189,11 +247,12 @@ export default function Page(){
     if(selectedOrder?.id===order.id)setSelectedOrder(prev=>({...prev,status}))
   }
 
-  async function acceptOrderWithDelivery(order,deliveryMode){
+  async function acceptOrderWithDelivery(order,deliveryMode,prepMinutes=merchantForm.prep_minutes){
     setMsg('')
-    const {error}=await supabase.rpc('merchant_accept_order',{
+    const {error}=await supabase.rpc('merchant_accept_order_v2',{
       p_order_id:order.id,
-      p_delivery_mode:deliveryMode
+      p_delivery_mode:deliveryMode,
+      p_prep_minutes:Math.max(5,Number(prepMinutes)||25)
     })
     if(error)return setMsg(error.message)
     setNewOrderIds(prev=>prev.filter(id=>id!==order.id))
@@ -220,7 +279,10 @@ export default function Page(){
     setProductForm({
       id:p.id,name:p.name||'',description:p.description||'',price:String(p.price??''),
       category_id:p.category_id||'',image_url:p.image_url||'',
-      is_available:p.is_available!==false,sort_order:p.sort_order||0
+      is_available:p.is_available!==false,sort_order:p.sort_order||0,
+      promo_price:p.promo_price==null?'':String(p.promo_price),
+      promo_starts_at:p.promo_starts_at?String(p.promo_starts_at).slice(0,16):'',
+      promo_ends_at:p.promo_ends_at?String(p.promo_ends_at).slice(0,16):''
     })
     const {data:groups}=await supabase
       .from('product_option_groups')
@@ -271,8 +333,14 @@ export default function Page(){
       name:productForm.name.trim(),
       description:productForm.description.trim(),
       price:Number(productForm.price),
+      regular_price:Number(productForm.price),
       image_url:productForm.image_url||null,
       is_available:productForm.is_available,
+      paused_until:null,
+      pause_reason:null,
+      promo_price:productForm.promo_price===''?null:Number(productForm.promo_price),
+      promo_starts_at:productForm.promo_starts_at?new Date(productForm.promo_starts_at).toISOString():null,
+      promo_ends_at:productForm.promo_ends_at?new Date(productForm.promo_ends_at).toISOString():null,
       sort_order:Number(productForm.sort_order)||0
     }
     let productId=productForm.id
@@ -307,13 +375,52 @@ export default function Page(){
       }
     }
 
+    await supabase.rpc('sync_product_operational_state',{p_merchant_id:merchant.id})
     setProductBusy(false);setShowProduct(false)
     await loadProducts(merchant.id)
   }
 
   async function toggleProduct(p){
-    const {error}=await supabase.from('products').update({is_available:!p.is_available}).eq('id',p.id)
+    const next=!p.is_available
+    const {error}=await supabase.from('products').update({
+      is_available:next,paused_until:null,pause_reason:next?null:'manual'
+    }).eq('id',p.id)
     if(error)return setMsg(error.message)
+    await loadProducts(merchant.id)
+  }
+
+  async function pauseProduct(p,minutes){
+    const until=minutes?new Date(Date.now()+minutes*60000).toISOString():null
+    const {error}=await supabase.from('products').update({
+      is_available:false,paused_until:until,pause_reason:minutes?'temporary':'manual'
+    }).eq('id',p.id)
+    if(error)return setMsg(error.message)
+    setMsg(minutes?`${p.name} se reactivará automáticamente en ${minutes<60?minutes+' min':minutes/60+' h'}.`:`${p.name} quedó pausado hasta que lo reactives.`)
+    await loadProducts(merchant.id)
+  }
+
+  async function duplicateProduct(p){
+    setMsg('')
+    const {data:copy,error}=await supabase.from('products').insert({
+      merchant_id:p.merchant_id,category_id:p.category_id,name:`${p.name} copia`,
+      description:p.description,price:Number(p.regular_price??p.price),regular_price:Number(p.regular_price??p.price),
+      image_url:p.image_url,is_available:false,sort_order:Number(p.sort_order||0)+1,
+      promo_price:null,promo_starts_at:null,promo_ends_at:null
+    }).select().single()
+    if(error)return setMsg(error.message)
+
+    const {data:groups}=await supabase.from('product_option_groups').select('*,product_options(*)').eq('product_id',p.id)
+    for(const g of groups||[]){
+      const {data:newGroup,error:ge}=await supabase.from('product_option_groups').insert({
+        product_id:copy.id,name:g.name,min_select:g.min_select,max_select:g.max_select
+      }).select().single()
+      if(ge)continue
+      const options=(g.product_options||[]).map(o=>({
+        group_id:newGroup.id,name:o.name,extra_price:o.extra_price,is_available:o.is_available
+      }))
+      if(options.length)await supabase.from('product_options').insert(options)
+    }
+    setMsg('Producto duplicado. Quedó pausado para que lo revises antes de publicarlo.')
     await loadProducts(merchant.id)
   }
 
@@ -326,11 +433,13 @@ export default function Page(){
 
   async function addCategory(){
     if(!newCategory.trim()||!merchant)return
-    const {error}=await supabase.from('categories').insert({
-      merchant_id:merchant.id,name:newCategory.trim(),sort_order:categories.length,is_active:true
+    setMsg('')
+    const {error}=await supabase.rpc('merchant_create_category',{
+      p_merchant_id:merchant.id,p_name:newCategory.trim()
     })
     if(error)return setMsg(error.message)
-    setNewCategory('');await loadCategories(merchant.id)
+    setNewCategory('');setShowCategoryCreator(false)
+    await loadCategories(merchant.id)
   }
 
   async function deleteCategory(c){
@@ -364,12 +473,17 @@ export default function Page(){
       cover_url:merchantForm.cover_url||null,
       logo_url:merchantForm.logo_url||null,
       delivery_mode:merchantForm.delivery_mode,
-      accepts_orders:merchantForm.accepts_orders
+      manual_pause:!!merchantForm.manual_pause,
+      schedule_enabled:merchantForm.schedule_enabled!==false,
+      prep_minutes:Math.max(5,Number(merchantForm.prep_minutes)||25)
     }
     const {data,error}=await supabase.from('merchants').update(payload).eq('id',merchant.id).select().single()
     setBusy(false)
     if(error)return setMsg(error.message)
-    setMerchant(data);setMsg('Cambios guardados.')
+    await supabase.rpc('sync_merchant_operational_state',{p_merchant_id:merchant.id})
+    const {data:fresh}=await supabase.from('merchants').select('*').eq('id',merchant.id).single()
+    setMerchant(fresh||data);setMerchantForm(prev=>({...prev,accepts_orders:(fresh||data).accepts_orders!==false}))
+    setMsg('Cambios guardados.')
   }
 
   async function saveHours(){
@@ -382,7 +496,10 @@ export default function Page(){
     const {error}=await supabase.from('merchant_hours').upsert(payload,{onConflict:'merchant_id,day_of_week'})
     setBusy(false)
     if(error)return setMsg(error.message)
-    setMsg('Horarios guardados.')
+    await supabase.rpc('sync_merchant_operational_state',{p_merchant_id:merchant.id})
+    const {data:fresh}=await supabase.from('merchants').select('*').eq('id',merchant.id).single()
+    if(fresh){setMerchant(fresh);setMerchantForm(prev=>({...prev,accepts_orders:fresh.accepts_orders!==false}))}
+    setMsg('Horarios guardados y apertura automática actualizada.')
   }
 
   function updateHour(index,patch){setHours(prev=>prev.map((h,i)=>i===index?{...h,...patch}:h))}
@@ -458,15 +575,18 @@ export default function Page(){
           <h1>{nav.find(x=>x[0]===tab)?.[1]}</h1>
         </div>
         <div className="topbar-actions">
+          <button className={`sound-toggle ${soundEnabled?'on':''}`} onClick={toggleSound} title="Sonido de pedidos">{soundEnabled?<Volume2/>:<VolumeX/>}</button>
           <button className={`order-live ${pendingCount?'has-new':''}`} onClick={()=>setTab('orders')}><Bell/>{pendingCount>0&&<span>{pendingCount}</span>}</button>
           <button className={`store-switch ${merchant?.accepts_orders?'on':'off'}`} onClick={async()=>{
-            const next=!merchant.accepts_orders
-            const {data,error}=await supabase.from('merchants').update({accepts_orders:next}).eq('id',merchant.id).select().single()
+            const manualPause=!merchantForm.manual_pause
+            const {error}=await supabase.from('merchants').update({manual_pause:manualPause}).eq('id',merchant.id)
             if(error)return setMsg(error.message)
-            setMerchant(data);setMerchantForm(prev=>({...prev,accepts_orders:next}))
+            await supabase.rpc('sync_merchant_operational_state',{p_merchant_id:merchant.id})
+            const {data}=await supabase.from('merchants').select('*').eq('id',merchant.id).single()
+            setMerchant(data);setMerchantForm(prev=>({...prev,manual_pause:!!data.manual_pause,accepts_orders:data.accepts_orders!==false}))
           }}>
             {merchant?.accepts_orders?<ToggleRight/>:<ToggleLeft/>}
-            <span>{merchant?.accepts_orders?'Abierto':'Pausado'}</span>
+            <span>{merchant?.accepts_orders?'Abierto':'Pausado/Cerrado'}</span>
           </button>
         </div>
       </header>
@@ -531,6 +651,7 @@ export default function Page(){
                 <span><Users/></span><div><b>{o.profiles?.full_name||'Cliente Guti'}</b><small>{o.profiles?.phone||'Sin teléfono'}</small></div><strong>${Number(o.total).toFixed(2)}</strong>
               </div>
               <div className="order-address"><MapPin/><span>{o.addresses?.formatted_address||'Dirección de entrega'}{o.addresses?.instructions&&<small>{o.addresses.instructions}</small>}</span></div>
+              {o.estimated_ready_at&&<div className="order-eta"><Timer/><span>Listo aprox. <b>{new Date(o.estimated_ready_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</b> · {o.preparation_minutes||merchantForm.prep_minutes} min</span></div>}
               <div className="order-actions">
                 <button className="secondary-btn" onClick={()=>openOrder(o)}>Ver detalle</button>
                 {o.status==='pending'&&<>
@@ -552,8 +673,11 @@ export default function Page(){
           <section className="page-intro"><div><small>MENÚ Y PRODUCTOS</small><h2>Catálogo</h2><p>Administra fotos, precios, categorías, disponibilidad, extras y variantes.</p></div><button className="primary-btn" onClick={()=>openProduct()}><Plus/>Nuevo producto</button></section>
           <div className="catalog-layout">
             <aside className="category-panel">
-              <h3>Categorías</h3>
-              <div className="category-add"><input placeholder="Nueva categoría" value={newCategory} onChange={e=>setNewCategory(e.target.value)}/><button onClick={addCategory}><Plus/></button></div>
+              <div className="category-title-row"><h3>Categorías</h3><button className="mini-primary" onClick={()=>setShowCategoryCreator(v=>!v)}><Plus/>Agregar</button></div>
+              {showCategoryCreator&&<div className="category-add category-add-open">
+                <input autoFocus placeholder="Ej. Hamburguesas" value={newCategory} onChange={e=>setNewCategory(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addCategory()}}/>
+                <button onClick={addCategory}><Check/></button>
+              </div>}
               <button className="category-filter active">Todos <span>{products.length}</span></button>
               {categories.map(c=><div className="category-row" key={c.id}><span>{c.name}</span><b>{products.filter(p=>p.category_id===c.id).length}</b><button onClick={()=>deleteCategory(c)}><Trash2/></button></div>)}
             </aside>
@@ -565,11 +689,19 @@ export default function Page(){
               <div className="product-table">
                 {shownProducts.map(p=><article key={p.id}>
                   <div className="product-thumb">{p.image_url?<img src={p.image_url} alt=""/>:<UtensilsCrossed/>}</div>
-                  <div className="product-main"><b>{p.name}</b><small>{p.categories?.name||'Sin categoría'} · {p.description||'Sin descripción'}</small></div>
+                  <div className="product-main"><b>{p.name} {p.promo_price&&<em className="promo-chip"><Percent/>Promo</em>}</b><small>{p.categories?.name||'Sin categoría'} · {p.description||'Sin descripción'}</small>{p.paused_until&&<span className="pause-until">Pausado hasta {new Date(p.paused_until).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</span>}</div>
                   <strong>${Number(p.price).toFixed(2)}</strong>
                   <button className={`availability ${p.is_available?'on':'off'}`} onClick={()=>toggleProduct(p)}>{p.is_available?<><Eye/>Disponible</>:<><EyeOff/>Agotado</>}</button>
-                  <button className="icon-btn" onClick={()=>openProduct(p)}><Pencil/></button>
-                  <button className="icon-btn danger" onClick={()=>deleteProduct(p)}><Trash2/></button>
+                  <div className="pause-menu">
+                    <button title="Pausar 30 min" onClick={()=>pauseProduct(p,30)}>30m</button>
+                    <button title="Pausar 1 hora" onClick={()=>pauseProduct(p,60)}>1h</button>
+                    <button title={p.is_available?'Pausar hasta reactivar':'Reactivar'} onClick={()=>p.is_available?pauseProduct(p,null):toggleProduct(p)}>{p.is_available?<PauseCircle/>:<PlayCircle/>}</button>
+                  </div>
+                  <div className="product-quick-actions">
+                    <button className="icon-btn" title="Duplicar" onClick={()=>duplicateProduct(p)}><Copy/></button>
+                    <button className="icon-btn" title="Editar" onClick={()=>openProduct(p)}><Pencil/></button>
+                    <button className="icon-btn danger" title="Eliminar" onClick={()=>deleteProduct(p)}><Trash2/></button>
+                  </div>
                 </article>)}
                 {!shownProducts.length&&<Empty icon={PackageSearch} title="Aún no hay productos" text="Agrega tu primer producto y empezará a aparecer en Guti.mx."/>}
               </div>
@@ -648,6 +780,20 @@ export default function Page(){
               </div>
             </section>
 
+            <section className="panel operation-settings">
+              <h3>Operación automática</h3>
+              <label>Tiempo estimado de preparación</label>
+              <div className="prep-selector">
+                {[15,20,25,30,45,60].map(n=><button className={Number(merchantForm.prep_minutes)===n?'active':''} key={n} onClick={()=>setMerchantForm(p=>({...p,prep_minutes:n}))}>{n} min</button>)}
+              </div>
+              <button className="setting-row" onClick={()=>setMerchantForm(p=>({...p,schedule_enabled:!p.schedule_enabled}))}>
+                <span><AlarmClock/></span><div><b>Abrir/cerrar según horarios</b><small>Actualiza automáticamente el estado del negocio.</small></div>
+                {merchantForm.schedule_enabled?<ToggleRight className="toggle-on"/>:<ToggleLeft/>}
+              </button>
+              <p className="help-text">El botón superior funciona como pausa manual. Aunque el horario diga abierto, una pausa manual mantiene el negocio cerrado.</p>
+              <button className="primary-btn" onClick={saveMerchant}><Save/>Guardar operación</button>
+            </section>
+
             <section className="panel financial-card">
               <h3>Condiciones Guti</h3>
               <div><CircleDollarSign/><span><small>Comisión de plataforma</small><b>{Number(merchant?.commission_percent||10)}%</b></span></div>
@@ -658,6 +804,13 @@ export default function Page(){
         </>}
       </div>
     </section>
+
+    {latestNewOrder&&<div className="new-order-alert">
+      <div className="new-order-alert-icon"><Bell/></div>
+      <div><small>NUEVO PEDIDO</small><b>¡Entró un pedido nuevo!</b><span>Revísalo y confirma el tiempo estimado.</span></div>
+      <button onClick={()=>{setTab('orders');setLatestNewOrder(null)}}>Ver pedido</button>
+      <button className="alert-close" onClick={()=>setLatestNewOrder(null)}><X/></button>
+    </div>}
 
     {selectedOrder&&<OrderModal order={selectedOrder} items={orderItems} onClose={()=>setSelectedOrder(null)} onStatus={status} onAccept={acceptOrderWithDelivery} merchant={merchant}/>}
     {showProduct&&ProductModal()}
@@ -707,6 +860,17 @@ export default function Page(){
               <label className="upload-button full">{uploading==='product'?<Loader2 className="spin"/>:<Upload/>}Subir imagen<input type="file" accept="image/*" onChange={e=>uploadMedia(e.target.files?.[0],'product')}/></label>
               <p className="help-text">Usa una foto cuadrada o horizontal, clara y con el producto al centro.</p>
             </section>
+            <section className="editor-card promo-editor-card">
+              <div className="editor-card-head"><div><h3>Promoción</h3><p>Programa un precio especial.</p></div><BadgePercent/></div>
+              <label>Precio promocional</label>
+              <div className="money-input"><span>$</span><input type="number" step="0.01" min="0" placeholder="Sin promoción" value={productForm.promo_price} onChange={e=>setProductForm({...productForm,promo_price:e.target.value})}/></div>
+              <div className="two-cols">
+                <div><label>Inicia</label><input type="datetime-local" value={productForm.promo_starts_at} onChange={e=>setProductForm({...productForm,promo_starts_at:e.target.value})}/></div>
+                <div><label>Termina</label><input type="datetime-local" value={productForm.promo_ends_at} onChange={e=>setProductForm({...productForm,promo_ends_at:e.target.value})}/></div>
+              </div>
+              <p className="help-text">Si dejas las fechas vacías, la promoción se activa inmediatamente y permanece hasta que la quites.</p>
+            </section>
+
             <section className="editor-card">
               <h3>Disponibilidad</h3>
               <button className="availability-card" onClick={()=>setProductForm({...productForm,is_available:!productForm.is_available})}>
@@ -725,33 +889,40 @@ export default function Page(){
 }
 
 function OrderModal({order,items,onClose,onStatus,onAccept,merchant}){
+  const [prep,setPrep]=useState(Number(order.preparation_minutes||merchant?.prep_minutes||25))
   return <div className="modal-backdrop" onClick={onClose}>
     <section className="order-modal" onClick={e=>e.stopPropagation()}>
       <header><div><small>PEDIDO #{order.id.slice(0,8)}</small><h2>{order.profiles?.full_name||'Cliente Guti'}</h2></div><button onClick={onClose}><X/></button></header>
-      <div className="order-modal-grid">
-        <section>
-          <h3>Productos</h3>
-          <div className="modal-items">{items.map(i=><article key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{Array.isArray(i.selected_options)&&i.selected_options.length>0&&<small>{JSON.stringify(i.selected_options)}</small>}</div><strong>${Number(i.line_total).toFixed(2)}</strong></article>)}</div>
-          <div className="modal-total"><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
+      <div className="order-modal-body">
+        <div className="order-detail-hero">
+          <div><span className={`status-pill ${statusMeta[order.status]?.tone||'gray'}`}>{statusMeta[order.status]?.label||order.status}</span><small>{new Date(order.created_at).toLocaleString('es-MX')}</small></div>
+          <strong>${Number(order.total).toFixed(2)}</strong>
+        </div>
+        <section className="detail-section"><h3>Productos</h3>
+          {items.map(i=><div className="detail-item" key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.group_name}: {o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}</div><strong>${Number(i.line_total).toFixed(2)}</strong></div>)}
         </section>
-        <aside>
-          <h3>Entrega</h3>
-          <div className="info-row"><MapPin/><div><b>Dirección</b><span>{order.addresses?.formatted_address||'—'}</span>{order.addresses?.instructions&&<small>{order.addresses.instructions}</small>}</div></div>
-          <div className="info-row"><Phone/><div><b>Teléfono</b><span>{order.profiles?.phone||'No registrado'}</span></div></div>
-          <div className="info-row"><Bike/><div><b>Reparto</b><span>{order.delivery_mode==='merchant'?'Repartidor del negocio':'Repartidor Guti'}</span></div></div>
-          <div className="info-row"><DollarSign/><div><b>Pago</b><span>{order.payment_method==='cash'?'Efectivo':order.payment_method}</span></div></div>
-        </aside>
+        <section className="detail-section info-list">
+          <div><Phone/><span><small>Cliente</small><b>{order.profiles?.phone||'Sin teléfono'}</b></span></div>
+          <div><MapPin/><span><small>Entrega</small><b>{order.addresses?.formatted_address||'Sin dirección'}</b>{order.addresses?.instructions&&<em>{order.addresses.instructions}</em>}</span></div>
+          {order.estimated_ready_at&&<div><Timer/><span><small>Tiempo estimado</small><b>{order.preparation_minutes} min · {new Date(order.estimated_ready_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</b></span></div>}
+        </section>
+
+        {order.status==='pending'&&<section className="accept-estimate">
+          <div><Timer/><span><b>¿En cuánto estará listo?</b><small>Este tiempo queda guardado en el pedido.</small></span></div>
+          <div className="prep-selector">{[15,20,25,30,45,60].map(n=><button key={n} className={prep===n?'active':''} onClick={()=>setPrep(n)}>{n} min</button>)}</div>
+        </section>}
       </div>
-      <footer>
+      <footer className="order-modal-actions">
         {order.status==='pending'&&<>
           <button className="danger-btn" onClick={()=>onStatus(order,'cancelled')}>Rechazar</button>
-          <button className="secondary-btn" onClick={()=>onAccept(order,'merchant')}>Aceptar · Repartidor propio</button>
-          <button className="primary-btn" onClick={()=>onAccept(order,'guti')}>Aceptar · Solicitar Guti</button>
+          <button className="secondary-btn" onClick={()=>onAccept(order,'merchant',prep)}>Aceptar · Repartidor propio</button>
+          <button className="primary-btn" onClick={()=>onAccept(order,'guti',prep)}>Aceptar · Solicitar Guti</button>
         </>}
-        {order.status==='accepted'&&<button className="primary-btn" onClick={()=>onStatus(order,'preparing')}>Empezar a preparar</button>}
-        {order.status==='preparing'&&<button className="primary-btn" onClick={()=>onStatus(order,'ready')}>Pedido listo</button>}
+        {order.status==='accepted'&&<button className="primary-btn" onClick={()=>onStatus(order,'preparing')}>Empezar preparación</button>}
+        {order.status==='preparing'&&<button className="primary-btn" onClick={()=>onStatus(order,'ready')}>Marcar listo</button>}
         {order.delivery_mode==='merchant'&&order.status==='ready'&&<button className="primary-btn" onClick={()=>onStatus(order,'on_the_way')}>Salió a entrega</button>}
-        {order.delivery_mode==='merchant'&&order.status==='on_the_way'&&<button className="primary-btn" onClick={()=>onStatus(order,'delivered')}>Marcar entregado</button>}
+        {order.delivery_mode==='merchant'&&order.status==='on_the_way'&&<button className="primary-btn" onClick={()=>onStatus(order,'delivered')}>Entregado</button>}
+        <button className="secondary-btn" onClick={onClose}>Cerrar</button>
       </footer>
     </section>
   </div>
