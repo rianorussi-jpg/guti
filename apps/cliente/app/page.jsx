@@ -83,6 +83,11 @@ export default function Page(){
   const [addressBusy,setAddressBusy]=useState(false)
 
   const [checkoutNotes,setCheckoutNotes]=useState('')
+  const [checkoutMerchantId,setCheckoutMerchantId]=useState(null)
+  const [showCheckout,setShowCheckout]=useState(false)
+  const [checkoutStep,setCheckoutStep]=useState(1)
+  const [paymentMethod,setPaymentMethod]=useState('cash')
+  const [checkoutBusy,setCheckoutBusy]=useState(false)
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>applySession(data.session))
@@ -372,12 +377,35 @@ export default function Page(){
     await loadAddresses(session.user.id)
   }
 
-  async function checkoutMerchant(merchantId){
-    if(!session){setShowCart(false);setShowAuth(true);return}
+  function beginCheckout(merchantId){
+    if(!session){
+      setShowCart(false)
+      setShowAuth(true)
+      return
+    }
     const group=cartGroups.find(g=>g.merchantId===merchantId)
     if(!group||!group.items.length)return
-    if(!selectedAddress){setShowCart(false);setShowAddressPicker(true);return}
+    setCheckoutMerchantId(merchantId)
+    setCheckoutStep(selectedAddress?2:1)
+    setPaymentMethod('cash')
+    setShowCart(false)
+    setShowCheckout(true)
+  }
 
+  async function createOrderFromCheckout(){
+    if(checkoutBusy)return
+    const merchantId=checkoutMerchantId
+    const group=cartGroups.find(g=>g.merchantId===merchantId)
+    if(!session||!group||!group.items.length)return
+    if(!selectedAddress){setCheckoutStep(1);return}
+
+    if(paymentMethod==='guti_balance' && Number(profile?.guti_balance||0) < group.total){
+      setMessage('No tienes suficiente Guti Balance para este pedido.')
+      return
+    }
+
+    setCheckoutBusy(true)
+    setMessage('')
     const merchant=group.merchant||merchants.find(m=>m.id===merchantId)
     const {data:order,error:oerr}=await supabase.from('orders').insert({
       customer_id:session.user.id,
@@ -389,11 +417,11 @@ export default function Page(){
       delivery_fee:45,
       discount:0,
       total:group.total,
-      payment_method:'cash',
+      payment_method:paymentMethod,
       payment_status:'pending',
       notes:checkoutNotes
     }).select().single()
-    if(oerr)return setMessage(oerr.message)
+    if(oerr){setCheckoutBusy(false);setMessage(oerr.message);return}
 
     const items=group.items.map(x=>({
       order_id:order.id,
@@ -405,13 +433,18 @@ export default function Page(){
       selected_options:x.selected_options||[]
     }))
     const {error:ierr}=await supabase.from('order_items').insert(items)
-    if(ierr)return setMessage(ierr.message)
+    if(ierr){setCheckoutBusy(false);setMessage(ierr.message);return}
 
     setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
     setCheckoutNotes('')
+    setCheckoutMerchantId(null)
+    setShowCheckout(false)
+    setCheckoutBusy(false)
+
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
+    setTrackingOrderId(order.id)
     setTab('home')
-    setMessage(`Pedido enviado a ${merchant?.name||'el negocio'}. Puedes rastrearlo desde Inicio.`)
+    setShowTracking(true)
   }
 
 
@@ -448,7 +481,7 @@ export default function Page(){
 
   function AddressModal(){
     if(!showAddressPicker)return null
-    return <div className="modal-backdrop" onClick={()=>setShowAddressPicker(false)}>
+    return <div className="modal-backdrop address-backdrop" onClick={()=>setShowAddressPicker(false)}>
       <section className="modal-card address-modal" onClick={e=>e.stopPropagation()}>
         <div className="between">
           <div><small className="eyebrow">ENTREGAR EN</small><h2>Mis direcciones</h2></div>
@@ -544,14 +577,14 @@ export default function Page(){
                 <div><span>Envío fijo</span><b>$45.00</b></div>
               </div>
 
-              <button className="checkout-button" onClick={()=>checkoutMerchant(group.merchantId)}>
+              <button className="checkout-button" onClick={()=>beginCheckout(group.merchantId)}>
                 <span><ShoppingCart/> Pedir en {group.merchant?.name||'este negocio'}</span>
                 <b>${group.total.toFixed(2)}</b>
               </button>
             </section>)}
           </div>
 
-          <button className="checkout-address" onClick={()=>setShowAddressPicker(true)}>
+          <button className="checkout-address" onClick={()=>{setShowCart(false);setShowAddressPicker(true)}}>
             <span className="checkout-address-icon"><MapPin/></span>
             <span><small>Dirección para los pedidos</small><b>{selectedAddress?.label||'Agregar dirección'}</b><em>{selectedAddress?.formatted_address||'Selecciona dónde recibirás tu pedido'}</em></span>
             <ChevronRight/>
@@ -623,6 +656,86 @@ export default function Page(){
             <span>Agregar al carrito</span><b>${totalCustom.toFixed(2)}</b>
           </button>
         </footer>
+      </section>
+    </div>
+  }
+
+  function CheckoutModal(){
+    if(!showCheckout)return null
+    const group=cartGroups.find(g=>g.merchantId===checkoutMerchantId)
+    if(!group)return null
+    const merchant=group.merchant
+    const methods=[
+      {id:'cash',label:'Efectivo',desc:'Paga al recibir tu pedido',icon:'💵'},
+      {id:'transfer',label:'Transferencia',desc:'Pago por transferencia',icon:'🏦'},
+      {id:'card',label:'Tarjeta',desc:'Integración pendiente',icon:'💳',coming:true},
+      {id:'guti_balance',label:'Guti Balance',desc:`Saldo: $${Number(profile?.guti_balance||0).toFixed(2)}`,icon:'🧡',coming:Number(profile?.guti_balance||0)<group.total}
+    ]
+    return <div className="checkout-backdrop" onClick={()=>setShowCheckout(false)}>
+      <section className="checkout-modal" onClick={e=>e.stopPropagation()}>
+        <header className="checkout-top">
+          <button onClick={()=>setShowCheckout(false)}><X/></button>
+          <div><small>FINALIZAR PEDIDO</small><h2>{merchant?.name||'Tu pedido'}</h2></div>
+          <span>{checkoutStep}/3</span>
+        </header>
+        <div className="checkout-progress">{[1,2,3].map(n=><span key={n} className={checkoutStep>=n?'active':''}/>)}</div>
+
+        {checkoutStep===1&&<section className="checkout-step">
+          <div className="checkout-step-title"><span><MapPin/></span><div><small>PASO 1</small><h3>¿Dónde lo entregamos?</h3><p>Selecciona una dirección guardada.</p></div></div>
+          {selectedAddress?<button className="checkout-selected-address" onClick={()=>setShowAddressPicker(true)}>
+            <span><MapPin/></span><div><b>{selectedAddress.label||'Dirección'}</b><small>{selectedAddress.formatted_address}</small></div><ChevronRight/>
+          </button>:<button className="checkout-add-address" onClick={()=>setShowAddressPicker(true)}><Plus/>Agregar dirección</button>}
+          <button className="checkout-next" disabled={!selectedAddress} onClick={()=>setCheckoutStep(2)}>Continuar <ArrowRight/></button>
+        </section>}
+
+        {checkoutStep===2&&<section className="checkout-step">
+          <div className="checkout-step-title"><span><WalletCards/></span><div><small>PASO 2</small><h3>Método de pago</h3><p>Elige cómo quieres pagar.</p></div></div>
+          <div className="payment-methods">
+            {methods.map(m=><button key={m.id} disabled={!!m.coming} className={paymentMethod===m.id?'selected':''} onClick={()=>setPaymentMethod(m.id)}>
+              <span className="payment-emoji">{m.icon}</span>
+              <div><b>{m.label}</b><small>{m.desc}</small></div>
+              {m.coming?<em>{m.id==='card'?'PRÓXIMAMENTE':'SIN SALDO'}</em>:<span className="payment-check">{paymentMethod===m.id?<Check/>:null}</span>}
+            </button>)}
+          </div>
+          <div className="checkout-nav-buttons">
+            <button className="checkout-back" onClick={()=>setCheckoutStep(1)}><ArrowLeft/>Atrás</button>
+            <button className="checkout-next" onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>
+          </div>
+        </section>}
+
+        {checkoutStep===3&&<section className="checkout-step">
+          <div className="checkout-step-title"><span><ReceiptText/></span><div><small>PASO 3</small><h3>Revisa y confirma</h3><p>Comprueba que todo esté correcto.</p></div></div>
+          <div className="checkout-review-card">
+            <div className="checkout-review-head">
+              <span className="merchant-cart-logo">{merchant?.logo_url?<img src={merchant.logo_url} alt=""/>:<Store/>}</span>
+              <div><small>PEDIDO EN</small><b>{merchant?.name||'Negocio'}</b></div>
+              <strong>${group.total.toFixed(2)}</strong>
+            </div>
+            <div className="checkout-review-items">
+              {group.items.map(i=><div key={i.cart_key}>
+                <span>{i.qty}×</span>
+                <div><b>{i.name}</b>{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}</div>
+                <strong>${(Number(i.price)*i.qty).toFixed(2)}</strong>
+              </div>)}
+            </div>
+            <div className="checkout-review-line"><span>Dirección</span><b>{selectedAddress?.label} · {selectedAddress?.formatted_address}</b></div>
+            <div className="checkout-review-line"><span>Pago</span><b>{methods.find(m=>m.id===paymentMethod)?.label}</b></div>
+            <div className="checkout-review-line"><span>Subtotal</span><b>${group.subtotal.toFixed(2)}</b></div>
+            <div className="checkout-review-line"><span>Envío</span><b>$45.00</b></div>
+            <div className="checkout-review-line total"><span>Total</span><b>${group.total.toFixed(2)}</b></div>
+          </div>
+
+          <label className="checkout-note-label">Nota general</label>
+          <textarea className="checkout-final-note" rows="2" placeholder="Instrucciones para el negocio (opcional)" value={checkoutNotes} onChange={e=>setCheckoutNotes(e.target.value)}/>
+
+          <div className="checkout-nav-buttons">
+            <button className="checkout-back" onClick={()=>setCheckoutStep(2)}><ArrowLeft/>Atrás</button>
+            <button className="checkout-confirm" disabled={checkoutBusy} onClick={createOrderFromCheckout}>
+              {checkoutBusy?'Enviando pedido...':<>Confirmar pedido <b>${group.total.toFixed(2)}</b></>}
+            </button>
+          </div>
+        </section>}
+        {message&&<div className="checkout-message">{message}</div>}
       </section>
     </div>
   }
@@ -862,7 +975,7 @@ export default function Page(){
       </section>
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
-      {CartDrawer()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
+      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
     </main>
   }
 
@@ -877,6 +990,6 @@ export default function Page(){
       {tab==='profile'&&<ProfileView/>}
     </div>
     <BottomNav/>
-    {CartDrawer()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
+    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
   </main>
 }
