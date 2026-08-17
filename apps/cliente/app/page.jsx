@@ -729,7 +729,7 @@ export default function Page(){
         {checkoutStep===2&&<section className="checkout-step">
           <div className="checkout-step-title"><span><WalletCards/></span><div><small>PASO 2</small><h3>Método de pago</h3><p>Elige cómo quieres pagar.</p></div></div>
           <div className="payment-methods">
-            {methods.map(m=><button key={m.id} disabled={!!m.coming} className={paymentMethod===m.id?'selected':''} onClick={()=>{setPaymentMethod(m.id);if(m.id!=='card'){setCardToken(null);setCardReady(false);setCardError('')}}}>
+            {methods.map(m=><button key={m.id} disabled={m.id==='card'?false:!!m.coming} className={paymentMethod===m.id?'selected':''} onClick={()=>{setPaymentMethod(m.id);if(m.id!=='card'){setCardToken(null);setCardReady(false);setCardError('')}}}>
               <span className="payment-emoji">{m.icon}</span>
               <div><b>{m.label}</b><small>{m.desc}</small></div>
               {m.coming?<em>{m.id==='guti_balance'?'SIN SALDO':'PRÓXIMAMENTE'}</em>:<span className="payment-check">{paymentMethod===m.id?<Check/>:null}</span>}
