@@ -226,3 +226,20 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
 @media(max-width:768px){
   .search-v3 input{font-size:16px!important}
 }
+
+/* Guti Cliente v3.1 */
+.explore-top-v31{display:grid;grid-template-columns:42px 1fr;gap:10px;align-items:start;padding-top:8px}
+.explore-back-v31{width:40px;height:40px;border:1px solid #e8e8e8;background:#fff;border-radius:13px;display:grid;place-items:center;margin-top:18px}
+.explore-back-v31 svg{width:17px}.explore-heading-v31{padding-left:0}.explore-search-v31{position:relative}
+.clear-search-v31{border:0;background:#f1f1f1;width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto}.clear-search-v31 svg{width:12px}
+.promo-carousel-v31{margin:18px 0 17px;position:relative;overflow:hidden;border-radius:16px}
+.promo-track-v31{display:flex;width:100%;transition:transform .55s cubic-bezier(.22,.61,.36,1)}
+.promo-slide-v31{min-width:100%;height:150px;position:relative;overflow:hidden;border-radius:16px}
+.promo-food-v31{background:linear-gradient(135deg,#ef4c08,#ff7b21);cursor:pointer}
+.promo-food-v31>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.points-slide-v31{background:linear-gradient(135deg,#159447,#2ab75f);color:#fff;display:grid;grid-template-columns:105px 1fr;align-items:center;padding:18px}
+.points-art-v31{width:82px;height:82px;border-radius:25px;background:#ffffff20;display:grid;place-items:center}.points-art-v31 svg{width:38px;height:38px}
+.points-copy-v31 small{font-size:8px;font-weight:900;letter-spacing:1px}.points-copy-v31 h2{font-size:20px;line-height:1.05;margin:4px 0}.points-copy-v31 p{font-size:9px;line-height:1.4;margin:0 0 9px;opacity:.9}
+.points-copy-v31 button{border:0;background:#fff;color:#14813f;border-radius:9px;padding:7px 9px;font-size:8px;font-weight:900;display:flex;align-items:center;gap:4px}.points-copy-v31 button svg{width:11px}
+.promo-dots-v31{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:5}.promo-dots-v31 button{width:6px;height:6px;border:0;border-radius:99px;padding:0;background:#ffffff80;transition:.2s}.promo-dots-v31 button.active{width:17px;background:#fff}
+@media(max-width:560px){.promo-slide-v31{height:140px}.points-slide-v31{grid-template-columns:82px 1fr;padding:14px}.points-art-v31{width:65px;height:65px;border-radius:20px}.points-art-v31 svg{width:31px;height:31px}.points-copy-v31 h2{font-size:17px}}

@@ -65,6 +65,7 @@ export default function Page(){
 
   const [tab,setTab]=useState('home')
   const [favoriteIds,setFavoriteIds]=useState([])
+  const [promoIndex,setPromoIndex]=useState(0)
   const [query,setQuery]=useState('')
   const [category,setCategory]=useState('all')
   const [message,setMessage]=useState('')
@@ -126,6 +127,11 @@ export default function Page(){
   function toggleFavorite(id){
     setFavoriteIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])
   }
+
+  useEffect(()=>{
+    const timer=setInterval(()=>setPromoIndex(i=>(i+1)%2),4500)
+    return ()=>clearInterval(timer)
+  },[])
 
   useEffect(()=>{
     if(!session?.user?.id) return
@@ -911,14 +917,30 @@ export default function Page(){
 
       <OrderCarousel/>
 
-      <section className="promo-banner-v3" onClick={()=>promoMerchant&&openMerchant(promoMerchant)}>
-        {promoMerchant?.cover_url&&<img src={promoMerchant.cover_url} alt=""/>}
-        <div className="promo-overlay-v3"/>
-        <div className="promo-content-v3">
-          <small>PROMO GUTI</small>
-          <h2>Antojo resuelto en minutos</h2>
-          <p>Pide local y recíbelo sin complicaciones.</p>
-          <button>Ver promoción <ArrowRight/></button>
+      <section className="promo-carousel-v31">
+        <div className="promo-track-v31" style={{transform:`translateX(-${promoIndex*100}%)`}}>
+          <article className="promo-slide-v31 promo-food-v31" onClick={()=>promoMerchant&&openMerchant(promoMerchant)}>
+            {promoMerchant?.cover_url&&<img src={promoMerchant.cover_url} alt=""/>}
+            <div className="promo-overlay-v3"/>
+            <div className="promo-content-v3">
+              <small>PROMO GUTI</small>
+              <h2>Antojo resuelto en minutos</h2>
+              <p>Pide local y recíbelo sin complicaciones.</p>
+              <button>Ver promoción <ArrowRight/></button>
+            </div>
+          </article>
+          <article className="promo-slide-v31 points-slide-v31">
+            <div className="points-art-v31"><Gift/></div>
+            <div className="points-copy-v31">
+              <small>GUTI PUNTOS</small>
+              <h2>Pide local. Gana recompensas.</h2>
+              <p>Acumula puntos con tus pedidos y úsalos después en Guti.mx.</p>
+              <button onClick={()=>setTab('profile')}>Ver mis puntos <ArrowRight/></button>
+            </div>
+          </article>
+        </div>
+        <div className="promo-dots-v31">
+          {[0,1].map(i=><button aria-label={`Ir a promo ${i+1}`} key={i} className={promoIndex===i?'active':''} onClick={()=>setPromoIndex(i)}/>)}
         </div>
       </section>
 
@@ -950,19 +972,34 @@ export default function Page(){
   function ExploreView(){
     return <>
       <Header/>
-      <div className="page-heading"><small>DESCUBRE</small><h1>Explorar</h1><p>Restaurantes, tiendas y súper de Gutiérrez Zamora.</p></div>
-      <div className="search-v2"><Search/><input placeholder="Buscar negocio..." value={query} onChange={e=>setQuery(e.target.value)}/></div>
+      <div className="explore-top-v31">
+        <button className="explore-back-v31" onClick={()=>{setQuery('');setCategory('all');setTab('home')}}><ArrowLeft/></button>
+        <div className="page-heading explore-heading-v31">
+          <small>{category==='food'?'RESTAURANTES':category==='super'?'SÚPER Y TIENDAS':'DESCUBRE'}</small>
+          <h1>{category==='food'?'Comida':category==='super'?'Súper':'Explorar'}</h1>
+          <p>{category==='food'?'Restaurantes y comida disponible en Gutiérrez Zamora.':'Negocios disponibles en Gutiérrez Zamora.'}</p>
+        </div>
+      </div>
+
+      <div className="search-v3 explore-search-v31">
+        <Search/>
+        <input placeholder={category==='food'?'Buscar restaurante o comida...':'Buscar negocio...'} value={query} onChange={e=>setQuery(e.target.value)}/>
+        {query&&<button className="clear-search-v31" onClick={()=>setQuery('')}><X/></button>}
+      </div>
+
       <div className="filter-row">
         <button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>Todos</button>
         <button className={category==='food'?'active':''} onClick={()=>setCategory('food')}>Comida</button>
         <button className={category==='super'?'active':''} onClick={()=>setCategory('super')}>Súper y tiendas</button>
       </div>
-      <div className="merchant-grid-v2 explore-grid">
+
+      <div className="merchant-grid-v3 explore-grid">
         {filteredMerchants.map(m=><MerchantCard key={m.id} m={m}/>)}
         {!filteredMerchants.length&&<div className="empty-state full"><Search/><h3>No encontramos negocios</h3><p>Prueba con otra búsqueda.</p></div>}
       </div>
     </>
   }
+
 
   function OrdersView(){
     if(!session)return <LoginRequired icon={ReceiptText} title="Tus pedidos viven aquí" text="Inicia sesión para rastrear pedidos activos y consultar tu historial."/>
@@ -1056,11 +1093,11 @@ export default function Page(){
 
   return <main className="client-app">
     <div className="client-content">
-      {tab==='home'&&<HomeView/>}
-      {tab==='explore'&&<ExploreView/>}
-      {tab==='orders'&&<OrdersView/>}
-      {tab==='favorites'&&<FavoritesView/>}
-      {tab==='profile'&&<ProfileView/>}
+      {tab==='home'&&HomeView()}
+      {tab==='explore'&&ExploreView()}
+      {tab==='orders'&&OrdersView()}
+      {tab==='favorites'&&FavoritesView()}
+      {tab==='profile'&&ProfileView()}
     </div>
     <BottomNav/>
     {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{AuthModal()}{AddressModal()}
