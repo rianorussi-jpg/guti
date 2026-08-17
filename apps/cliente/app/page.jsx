@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V383_CLIENT='3.8.3'
+const GUTI_BUILD_V384_CLIENT='3.8.4'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
@@ -164,9 +164,9 @@ export default function Page(){
   }
 
   async function enableClientNotifications(){
-    if(!session?.user?.id)return setMessage('Inicia sesión para activar avisos.')
-    try{await enableGutiPush(supabase,session.user.id,'cliente');setMessage('Push de Guti activado. Te avisaremos aunque no tengas Guti abierto.')}
-    catch(e){setMessage(e.message||'No se pudieron activar las notificaciones.')}
+    if(!session?.user?.id)return showProfileToast('Inicia sesión para activar avisos.')
+    try{await enableGutiPush(supabase,session.user.id,'cliente');showProfileToast('Push de Guti activado. Te avisaremos aunque no tengas Guti abierto.')}
+    catch(e){showProfileToast(e.message||'No se pudieron activar las notificaciones.')}
   }
 
   function openSupport(){setSupportOpen(true)}
@@ -1267,7 +1267,7 @@ export default function Page(){
         <button onClick={enableClientNotifications}><span><Headphones/></span><div><b>Avisos de mis pedidos</b><small>Activa notificaciones del navegador</small></div><ChevronRight/></button>
         <button onClick={()=>setTab('favorites')}><span><Heart/></span><div><b>Favoritos</b><small>{favoriteIds.length} negocio{favoriteIds.length===1?'':'s'} guardado{favoriteIds.length===1?'':'s'}</small></div><ChevronRight/></button>
         {!profile?.referred_by&&<div className="referral-entry-v38"><input placeholder="Código de un amigo" value={referralInput} onChange={e=>setReferralInput(e.target.value.toUpperCase())}/><button onClick={applyReferral}>Aplicar</button></div>}
-        <button onClick={async()=>{try{const promptEvent=window.__gutiInstallPrompt;if(promptEvent){await promptEvent.prompt();window.__gutiInstallPrompt=null}else setMessage('En iPhone usa Compartir → Agregar a pantalla de inicio. En Android busca “Instalar app” en el menú del navegador.')}catch{}}}><span><Smartphone/></span><div><b>Instalar Guti</b><small>Úsala como una app en tu pantalla de inicio</small></div><ChevronRight/></button>
+        <button onClick={installGutiApp}><span><Smartphone/></span><div><b>Instalar Guti</b><small>Úsala como una app en tu pantalla de inicio</small></div><ChevronRight/></button>
       </section>
 
       <button className="logout-button" onClick={signOut}><LogOut/> Cerrar sesión</button>
@@ -1368,6 +1368,7 @@ export default function Page(){
       {tab==='profile'&&ProfileView()}
     </div>
     <BottomNav/>
+    {profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')} aria-label="Cerrar"><X/></button></div>}
     {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{SupportModal()}{AuthModal()}{AddressModal()}
   </main>
 }

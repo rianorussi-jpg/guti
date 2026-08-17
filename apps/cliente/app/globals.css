@@ -443,3 +443,17 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
   from{opacity:0;transform:translate(-50%,8px)}
   to{opacity:1;transform:translate(-50%,0)}
 }
+
+/* Guti Cliente v3.8.4 — toast realmente global */
+.global-profile-toast{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+}
+.global-profile-toast>span{flex:1;min-width:0}
+.global-profile-toast>button{
+  width:28px;height:28px;min-width:28px;border:0;border-radius:50%;
+  background:#ffffff18;color:#fff;display:grid;place-items:center;padding:0
+}
+.global-profile-toast>button svg{width:14px;height:14px}
