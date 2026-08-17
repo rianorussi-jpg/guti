@@ -10,14 +10,14 @@ import {
 import { getSupabaseBrowserClient } from '../lib/supabase'
 
 const categoryDefs = [
-  {key:'food', label:'Comida', icon:UtensilsCrossed, types:['restaurant']},
-  {key:'super', label:'Súper', icon:ShoppingBasket, types:['supermarket','convenience']},
-  {key:'pharmacy', label:'Farmacia', icon:Pill, types:['pharmacy']},
-  {key:'errands', label:'Mandados', icon:Package, coming:true},
-  {key:'delivery', label:'Envíos', icon:Bike, coming:true},
-  {key:'drinks', label:'Bebidas', icon:CupSoda, types:['restaurant','convenience']},
-  {key:'desserts', label:'Postres', icon:IceCreamBowl, types:['restaurant']},
-  {key:'all', label:'Más', icon:Grid2X2, types:[]}
+  {key:'food', label:'Comida', image:'/categories/comida.svg', types:['restaurant']},
+  {key:'super', label:'Súper', image:'/categories/super.svg', types:['supermarket','convenience']},
+  {key:'pharmacy', label:'Farmacias', image:'/categories/farmacia.svg', types:['pharmacy']},
+  {key:'errands', label:'Mandados', image:'/categories/mandados.svg', coming:true},
+  {key:'delivery', label:'Envíos', image:'/categories/envios.svg', coming:true},
+  {key:'drinks', label:'Bebidas', image:'/categories/bebidas.svg', types:['restaurant','convenience']},
+  {key:'desserts', label:'Postres', image:'/categories/postres.svg', types:['restaurant']},
+  {key:'all', label:'Más', image:'/categories/mas.svg', types:[]}
 ]
 
 const statusLabel = s => ({
@@ -64,6 +64,7 @@ export default function Page(){
   const activeOrder = activeOrders.find(o=>o.id===trackingOrderId) || activeOrders[0] || null
 
   const [tab,setTab]=useState('home')
+  const [favoriteIds,setFavoriteIds]=useState([])
   const [query,setQuery]=useState('')
   const [category,setCategory]=useState('all')
   const [message,setMessage]=useState('')
@@ -108,6 +109,23 @@ export default function Page(){
     const key=session?.user?.id?`guti-cart:${session.user.id}`:'guti-cart:guest'
     localStorage.setItem(key,JSON.stringify(cart))
   },[cart,session?.user?.id])
+
+  useEffect(()=>{
+    const key=session?.user?.id?`guti-favorites:${session.user.id}`:'guti-favorites:guest'
+    try{
+      const saved=JSON.parse(localStorage.getItem(key)||'[]')
+      setFavoriteIds(Array.isArray(saved)?saved:[])
+    }catch{setFavoriteIds([])}
+  },[session?.user?.id])
+
+  useEffect(()=>{
+    const key=session?.user?.id?`guti-favorites:${session.user.id}`:'guti-favorites:guest'
+    localStorage.setItem(key,JSON.stringify(favoriteIds))
+  },[favoriteIds,session?.user?.id])
+
+  function toggleFavorite(id){
+    setFavoriteIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])
+  }
 
   useEffect(()=>{
     if(!session?.user?.id) return
@@ -792,26 +810,39 @@ export default function Page(){
   function BottomNav(){
     const items=[
       ['home','Inicio',Home],
-      ['explore','Explorar',Search],
       ['orders','Pedidos',ReceiptText],
+      ['favorites','Favoritos',Heart],
       ['profile','Perfil',UserRound]
     ]
-    return <nav className="bottom-nav-v2">{items.map(([key,label,Icon])=><button className={tab===key?'active':''} key={key} onClick={()=>{setSelectedMerchant(null);setTab(key)}}><Icon/><span>{label}</span>{key==='orders'&&activeOrders.length>0&&<i>{activeOrders.length}</i>}</button>)}</nav>
+    return <nav className="bottom-nav-v3">
+      {items.map(([key,label,Icon])=><button className={tab===key?'active':''} key={key} onClick={()=>{setSelectedMerchant(null);setTab(key)}}>
+        <Icon/><span>{label}</span>
+        {key==='orders'&&activeOrders.length>0&&<i>{activeOrders.length}</i>}
+      </button>)}
+    </nav>
   }
 
+
   function Header(){
-    return <header className="home-header">
-      <button className="address-header" onClick={()=>setShowAddressPicker(true)}>
-        <span><MapPin/></span>
-        <div><small>Entregar en</small><b>{selectedAddress?.label||'Agregar dirección'}</b><em>{selectedAddress?.formatted_address||'Gutiérrez Zamora, Ver.'}</em></div>
+    return <header className="home-header-v3">
+      <button className="address-header-v3" onClick={()=>setShowAddressPicker(true)}>
+        <MapPin/>
+        <div>
+          <b>{selectedAddress?.label||'Gutiérrez Zamora, Ver.'}</b>
+          <small>{selectedAddress?.formatted_address||'Selecciona tu dirección'}</small>
+        </div>
         <ChevronDown/>
       </button>
-      <div className="header-actions">
-        <button className="round-action"><Bell/></button>
-        <button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button>
+      <div className="header-actions-v3">
+        <button className="notification-btn"><Bell/></button>
+        <button className="cart-btn-v3" onClick={()=>setShowCart(true)}>
+          <ShoppingCart/>
+          {cartCount>0&&<span>{cartCount}</span>}
+        </button>
       </div>
     </header>
   }
+
 
   function OrderCarousel(){
     if(!activeOrders.length)return null
@@ -831,59 +862,90 @@ export default function Page(){
     </section>
   }
 
-  function MerchantCard({m}){
-    return <button className="merchant-card-v2" onClick={()=>openMerchant(m)}>
-      <div className="merchant-cover-v2">
-        {m.cover_url?<img src={m.cover_url} alt=""/>:<Store/>}
-        <span>{m.delivery_mode==='merchant'?'Reparto propio':'Entrega Guti'}</span>
-      </div>
-      <div className="merchant-body-v2">
-        <div><h3>{m.name}</h3><p>{m.description||'Negocio local en Gutiérrez Zamora'}</p></div>
-        <div className="merchant-meta"><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span></div>
-      </div>
-    </button>
+  function MerchantCard({m,compact=false}){
+    const fav=favoriteIds.includes(m.id)
+    return <article className={compact?'merchant-card-v3 compact':'merchant-card-v3'}>
+      <button className="merchant-card-main" onClick={()=>openMerchant(m)}>
+        <div className="merchant-image-v3">
+          {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<Store/>}
+          <span className="merchant-delivery-badge">{m.delivery_mode==='merchant'?'Reparto propio':'Entrega Guti'}</span>
+        </div>
+        <div className="merchant-copy-v3">
+          <h3>{m.name}</h3>
+          <p>{m.description||'Negocio local'}</p>
+          <div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span></div>
+        </div>
+      </button>
+      <button className={fav?'favorite-heart active':'favorite-heart'} onClick={()=>toggleFavorite(m.id)}><Heart/></button>
+    </article>
   }
 
+
   function HomeView(){
+    const promoMerchant=merchants.find(m=>m.cover_url)||merchants[0]
     return <>
       <Header/>
-      <section className="welcome-row">
-        <div><small>{session?'HOLA DE NUEVO':'BIENVENIDO A'}</small><h1>{session?(profile?.full_name?.split(' ')[0]||'Guti'):'Guti.mx'} <span>👋</span></h1></div>
-        <span className="delivery-chip">Envío fijo $45</span>
+
+      <section className="brand-hero-v3">
+        <img src="/brand/guti-logo.svg" alt="Guti Delivery"/>
+        <p>Lo que necesites, te lo llevamos.</p>
       </section>
 
-      <div className="search-v2"><Search/><input placeholder="¿Qué se te antoja hoy?" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+      <div className="search-v3">
+        <Search/>
+        <input placeholder="¿Qué quieres pedir hoy?" value={query} onChange={e=>setQuery(e.target.value)}/>
+      </div>
+
+      <section className="category-grid-v3">
+        {categoryDefs.map(c=><button key={c.key} onClick={()=>{
+          if(c.coming){setMessage(`${c.label} estará disponible muy pronto.`);return}
+          setCategory(c.key)
+          if(c.key==='all') setTab('explore')
+          else setTab('explore')
+        }}>
+          <span><img src={c.image} alt=""/></span>
+          <b>{c.label}</b>
+          {c.coming&&<em>Pronto</em>}
+        </button>)}
+      </section>
+
       <OrderCarousel/>
 
-      <section className="category-section">
-        <div className="section-title"><div><small>TODO EN UN LUGAR</small><h2>¿Qué necesitas?</h2></div></div>
-        <div className="category-grid-v2">
-          {categoryDefs.map(c=>{
-            const Icon=c.icon
-            return <button key={c.key} className={category===c.key?'active':''} onClick={()=>{
-              if(c.coming){setMessage(`${c.label} estará disponible muy pronto.`);return}
-              setCategory(c.key)
-              if(c.key!=='all')setTab('explore')
-            }}>
-              <span><Icon/></span><b>{c.label}</b>{c.coming&&<em>Pronto</em>}
-            </button>
-          })}
+      <section className="promo-banner-v3" onClick={()=>promoMerchant&&openMerchant(promoMerchant)}>
+        {promoMerchant?.cover_url&&<img src={promoMerchant.cover_url} alt=""/>}
+        <div className="promo-overlay-v3"/>
+        <div className="promo-content-v3">
+          <small>PROMO GUTI</small>
+          <h2>Antojo resuelto en minutos</h2>
+          <p>Pide local y recíbelo sin complicaciones.</p>
+          <button>Ver promoción <ArrowRight/></button>
         </div>
       </section>
 
-      <section className="points-banner">
-        <div><span className="points-icon"><Gift/></span><div><small>GUTI PUNTOS</small><h2>Pide local. Gana recompensas.</h2><p>Acumula puntos con tus pedidos y úsalos después.</p></div></div>
-        <ArrowRight/>
+      <section className="home-section-v3">
+        <div className="home-section-head-v3">
+          <h2>Restaurantes cerca de ti</h2>
+          <button onClick={()=>{setCategory('food');setTab('explore')}}>Ver todos</button>
+        </div>
+        <div className="nearby-scroll-v3">
+          {merchants.filter(m=>m.merchant_type==='restaurant').slice(0,6).map(m=><MerchantCard key={m.id} m={m} compact/>)}
+        </div>
       </section>
 
-      <section>
-        <div className="section-title"><div><small>CERCA DE TI</small><h2>Negocios en Guti</h2></div><button onClick={()=>setTab('explore')}>Ver todos</button></div>
-        <div className="merchant-grid-v2">{merchants.slice(0,4).map(m=><MerchantCard key={m.id} m={m}/>)}</div>
+      <section className="home-section-v3">
+        <div className="home-section-head-v3">
+          <h2>También puedes pedir</h2>
+          <button onClick={()=>{setCategory('super');setTab('explore')}}>Ver todos</button>
+        </div>
+        <div className="merchant-grid-v3">
+          {merchants.filter(m=>m.merchant_type!=='restaurant').slice(0,4).map(m=><MerchantCard key={m.id} m={m}/>)}
+        </div>
       </section>
 
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
     </>
   }
+
 
   function ExploreView(){
     return <>
@@ -917,6 +979,16 @@ export default function Page(){
         </article>)}
         {!orderHistory.some(o=>['delivered','cancelled'].includes(o.status))&&<div className="empty-state small"><ReceiptText/><h3>Aún no hay historial</h3><p>Tus pedidos completados aparecerán aquí.</p></div>}
       </div>
+    </>
+  }
+
+  function FavoritesView(){
+    const favorites=merchants.filter(m=>favoriteIds.includes(m.id))
+    return <>
+      <Header/>
+      <div className="page-heading"><small>TUS GUARDADOS</small><h1>Favoritos</h1><p>Accede rápido a los negocios que más te gustan.</p></div>
+      {favorites.length?<div className="merchant-grid-v3 favorites-grid-v3">{favorites.map(m=><MerchantCard key={m.id} m={m}/>)}</div>
+      :<div className="login-required"><span><Heart/></span><h1>Aún no tienes favoritos</h1><p>Toca el corazón de cualquier negocio para guardarlo aquí.</p><button className="primary-wide" onClick={()=>setTab('home')}>Explorar negocios</button></div>}
     </>
   }
 
@@ -987,6 +1059,7 @@ export default function Page(){
       {tab==='home'&&<HomeView/>}
       {tab==='explore'&&<ExploreView/>}
       {tab==='orders'&&<OrdersView/>}
+      {tab==='favorites'&&<FavoritesView/>}
       {tab==='profile'&&<ProfileView/>}
     </div>
     <BottomNav/>
