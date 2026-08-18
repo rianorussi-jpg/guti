@@ -1,9 +1,9 @@
 'use client'
-const GUTI_BUILD_V392_REPARTIDOR='3.9.2'
+const GUTI_BUILD_V394_REPARTIDOR='3.9.4'
 const GUTI_BUILD_V390_REPARTIDOR='3.9.0'
 import { useEffect,useMemo,useState } from 'react'
 import {
-  Bike,LogOut,MapPin,Phone,Navigation,Clock3,PackageCheck,CheckCircle2,
+  Bike,LogOut,MapPin,Phone,Clock3,PackageCheck,CheckCircle2,
   Wallet,CalendarDays,History,ChevronRight,RefreshCw,Store,AlertCircle,
   Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards,CreditCard,Banknote,ShieldCheck,X,Smartphone
 } from 'lucide-react'
@@ -133,7 +133,7 @@ export default function Page(){
       supabase.from('profiles').select('full_name,phone').eq('id',uid).maybeSingle(),
       supabase.rpc('get_available_orders_v37'),
       supabase.from('orders')
-        .select('*,merchants(name,address,phone),addresses(formatted_address,instructions,postal_code,lat,lng),profiles!orders_customer_id_fkey(full_name,phone)')
+        .select('*,merchants(name,address,phone,lat,lng,pin_confirmed),addresses(formatted_address,instructions,postal_code,lat,lng),profiles!orders_customer_id_fkey(full_name,phone)')
         .eq('courier_id',uid).in('status',['assigned','picked_up','on_the_way'])
         .order('created_at',{ascending:false}),
       supabase.from('orders')
@@ -203,28 +203,25 @@ export default function Page(){
   const weekTrips=history.filter(o=>new Date(o.delivered_at||o.created_at)>=startWeek).length
 
   const addressOf=o=>Array.isArray(o?.addresses)?o.addresses[0]:o?.addresses
-  const pinOf=o=>{
+  const clientPin=o=>{
     const a=addressOf(o)
-    const lat=Number(o?.delivery_lat??a?.lat)
-    const lng=Number(o?.delivery_lng??a?.lng)
+    const lat=Number(o?.delivery_lat??a?.lat),lng=Number(o?.delivery_lng??a?.lng)
     return Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180?{lat,lng}:null
   }
-  const navTarget=o=>{
-    const pin=pinOf(o)
-    const a=addressOf(o)
-    return pin?`${pin.lat},${pin.lng}`:(a?.formatted_address||'Gutiérrez Zamora, Veracruz')
+  const merchantPin=o=>{
+    const m=Array.isArray(o?.merchants)?o.merchants[0]:o?.merchants
+    const lat=Number(o?.pickup_lat??m?.lat),lng=Number(o?.pickup_lng??m?.lng)
+    return m?.pin_confirmed!==false&&Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180?{lat,lng}:null
   }
-  const googleUrl=o=>{
-    const pin=pinOf(o)
+  const googleMapsUrl=o=>{
+    const goingToMerchant=o?.status==='assigned'
+    const pin=goingToMerchant?merchantPin(o):clientPin(o)
+    const fallback=goingToMerchant
+      ? ((Array.isArray(o?.merchants)?o.merchants[0]:o?.merchants)?.address||'Gutiérrez Zamora, Veracruz')
+      : (addressOf(o)?.formatted_address||'Gutiérrez Zamora, Veracruz')
     return pin
-      ? `https://www.google.com/maps/dir/?api=1&destination=${pin.lat}%2C${pin.lng}&travelmode=driving`
-      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(navTarget(o))}&travelmode=driving`
-  }
-  const wazeUrl=o=>{
-    const pin=pinOf(o)
-    return pin
-      ? `https://www.waze.com/ul?ll=${pin.lat}%2C${pin.lng}&navigate=yes`
-      : `https://www.waze.com/ul?q=${encodeURIComponent(navTarget(o))}&navigate=yes`
+      ? `https://www.google.com/maps/search/?api=1&query=${pin.lat}%2C${pin.lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fallback)}`
   }
 
   if(!session)return <main className="courier-login">
@@ -297,10 +294,12 @@ export default function Page(){
               <span className="payment-method-pill">{paymentName(active.payment_method)}</span>
             </div>}
 
-            {pinOf(active)&&<div className="exact-pin-note"><MapPin/><span>Pin exacto de entrega</span><b>{pinOf(active).lat.toFixed(6)}, {pinOf(active).lng.toFixed(6)}</b></div>}
-            <div className="map-actions">
-              <a target="_blank" rel="noreferrer" href={active.status==='assigned'?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(active.merchants?.address||'Gutiérrez Zamora, Veracruz')}`:googleUrl(active)}><Map/>Google Maps</a>
-              <a target="_blank" rel="noreferrer" href={active.status==='assigned'?`https://www.waze.com/ul?q=${encodeURIComponent(active.merchants?.address||'Gutiérrez Zamora, Veracruz')}&navigate=yes`:wazeUrl(active)}><Navigation/>Waze</a>
+            <div className="maps-destination-note-v394">
+              <MapPin/>
+              <div><b>{active.status==='assigned'?'Ir al negocio':'Ir con el cliente'}</b><span>{active.status==='assigned'?'Google Maps te llevará al pin exacto del negocio para recoger el pedido.':'Google Maps te llevará al pin exacto que marcó el cliente para entregar.'}</span></div>
+            </div>
+            <div className="map-actions map-actions-single-v394">
+              <a target="_blank" rel="noreferrer" href={googleMapsUrl(active)}><Map/>{active.status==='assigned'?'Abrir ubicación del negocio':'Abrir ubicación del cliente'}</a>
             </div>
 
             <div className="delivery-main-action">

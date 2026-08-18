@@ -41,6 +41,7 @@
 /* Repartidor v3.9 */
 .cash-block-v39{background:#fff0f0;border:1px solid #f0caca;color:#9a2f2f;border-radius:14px;padding:11px;display:flex;gap:8px;margin-bottom:10px}.cash-block-v39 svg{width:20px}.cash-block-v39 b{font-size:10px;display:block}.cash-block-v39 span{font-size:8px}.delivery-pin-courier-v39{background:#f6f6f6;border-radius:12px;padding:10px;margin:10px 0;display:grid;gap:5px}.delivery-pin-courier-v39 label{font-size:8px;font-weight:900}.delivery-pin-courier-v39 input{font-size:24px;letter-spacing:8px;text-align:center;border:1px solid #ddd;border-radius:10px;padding:9px}.delivery-pin-courier-v39 small{font-size:7px;color:#777}.settlement-download-v39{grid-column:1/-1;border:1px solid #ddd;background:#fff;border-radius:8px;padding:7px;font-size:7px;font-weight:900}
 
-/* Repartidor v3.9.2 — navegación al pin exacto */
-.exact-pin-note{display:flex;align-items:center;gap:6px;margin:8px 0;padding:8px 9px;border-radius:10px;background:#eef8f1;color:#176f3c;font-size:7px}
-.exact-pin-note svg{width:14px}.exact-pin-note span{font-weight:900}.exact-pin-note b{margin-left:auto;font-size:7px;font-variant-numeric:tabular-nums}
+/* RepaGuti v3.9.4 — destino explicado y Google Maps único */
+.maps-destination-note-v394{display:grid;grid-template-columns:34px 1fr;gap:8px;align-items:center;margin:10px 0 7px;padding:10px;border-radius:12px;background:#f5f5f5;border:1px solid #e7e7e7}
+.maps-destination-note-v394>svg{width:18px;color:#f4510b}.maps-destination-note-v394 div{display:grid}.maps-destination-note-v394 b{font-size:9px}.maps-destination-note-v394 span{font-size:7px;color:#777;line-height:1.4}
+.map-actions-single-v394{grid-template-columns:1fr!important}.map-actions-single-v394 a{width:100%;justify-content:center}

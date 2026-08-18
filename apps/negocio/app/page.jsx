@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V390_NEGOCIO='3.9.0'
+const GUTI_BUILD_V394_NEGOCIO='3.9.4'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, ReceiptText, PackageSearch, Store, Clock3, Settings, LogOut,
@@ -9,7 +9,7 @@ import {
   Camera, MapPin, Phone, FileText, BadgePercent, AlertCircle, ChevronDown,
   CircleDollarSign, Boxes, Tag, ListPlus, CheckCircle2, XCircle, Loader2,
   RefreshCw, Menu, ArrowLeft, Copy, ExternalLink, Volume2, VolumeX, Timer, PauseCircle,
-  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck, Banknote, CreditCard, ChefHat, Smartphone
+  PlayCircle, Percent, Sparkles, AlarmClock, Layers3, Wallet, Landmark, CheckCheck, Banknote, CreditCard, ChefHat, Smartphone, LocateFixed, Crosshair
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
@@ -79,8 +79,10 @@ export default function Page(){
 
   const [merchantForm,setMerchantForm]=useState({
     name:'',description:'',phone:'',address:'',cover_url:'',logo_url:'',
-    delivery_mode:'guti',accepts_orders:true,manual_pause:false,schedule_enabled:true,prep_minutes:25
+    delivery_mode:'guti',accepts_orders:true,manual_pause:false,schedule_enabled:true,prep_minutes:25,
+    lat:20.4477,lng:-97.0854,pin_confirmed:false
   })
+  const [merchantLocationBusy,setMerchantLocationBusy]=useState(false)
   const [uploading,setUploading]=useState('')
 
   const [sidebarOpen,setSidebarOpen]=useState(false)
@@ -237,7 +239,8 @@ export default function Page(){
       name:m.name||'',description:m.description||'',phone:m.phone||'',address:m.address||'',
       cover_url:m.cover_url||'',logo_url:m.logo_url||'',delivery_mode:m.delivery_mode||'guti',
       accepts_orders:m.accepts_orders!==false,manual_pause:!!m.manual_pause,
-      schedule_enabled:m.schedule_enabled!==false,prep_minutes:Number(m.prep_minutes||25)
+      schedule_enabled:m.schedule_enabled!==false,prep_minutes:Number(m.prep_minutes||25),
+      lat:Number(m.lat||20.4477),lng:Number(m.lng||-97.0854),pin_confirmed:!!m.pin_confirmed
     })
 
     await Promise.all([
@@ -535,6 +538,15 @@ export default function Page(){
     setUploading('')
   }
 
+  function useMerchantLocation(){
+    if(!navigator.geolocation)return setMsg('Este dispositivo no permite obtener ubicación.')
+    setMerchantLocationBusy(true)
+    navigator.geolocation.getCurrentPosition(pos=>{
+      setMerchantForm(p=>({...p,lat:pos.coords.latitude,lng:pos.coords.longitude,pin_confirmed:true}))
+      setMerchantLocationBusy(false);setMsg('Ubicación detectada. Ajusta el pin exactamente en la entrada del negocio.')
+    },()=>{setMerchantLocationBusy(false);setMsg('No pudimos obtener tu ubicación. Mueve el pin manualmente.')},{enableHighAccuracy:true,timeout:12000})
+  }
+
   async function saveMerchant(){
     if(!merchant)return
     setBusy(true);setMsg('')
@@ -548,7 +560,8 @@ export default function Page(){
       delivery_mode:merchantForm.delivery_mode,
       manual_pause:!!merchantForm.manual_pause,
       schedule_enabled:merchantForm.schedule_enabled!==false,
-      prep_minutes:Math.max(5,Number(merchantForm.prep_minutes)||25)
+      prep_minutes:Math.max(5,Number(merchantForm.prep_minutes)||25),
+      lat:Number(merchantForm.lat),lng:Number(merchantForm.lng),pin_confirmed:!!merchantForm.pin_confirmed
     }
     const {data,error}=await supabase.from('merchants').update(payload).eq('id',merchant.id).select().single()
     setBusy(false)
@@ -823,6 +836,12 @@ export default function Page(){
               <label>Descripción</label><textarea rows="4" placeholder="Cuéntale a tus clientes qué vendes..." value={merchantForm.description} onChange={e=>setMerchantForm({...merchantForm,description:e.target.value})}/>
               <div className="two-cols"><div><label>Teléfono</label><input value={merchantForm.phone} onChange={e=>setMerchantForm({...merchantForm,phone:e.target.value})}/></div><div><label>Dirección</label><input value={merchantForm.address} onChange={e=>setMerchantForm({...merchantForm,address:e.target.value})}/></div></div>
 
+              <div className="merchant-pin-card-v394">
+                <div className="merchant-pin-head-v394"><div><MapPin/><span><b>Pin exacto del negocio</b><small>Este punto es el que recibirá RepaGuti para llegar a recoger el pedido.</small></span></div><button type="button" onClick={useMerchantLocation} disabled={merchantLocationBusy}><LocateFixed/>{merchantLocationBusy?'Buscando...':'Usar mi ubicación'}</button></div>
+                <BusinessPinMap lat={merchantForm.lat} lng={merchantForm.lng} onChange={(lat,lng)=>setMerchantForm(p=>({...p,lat,lng,pin_confirmed:true}))}/>
+                <div className="merchant-pin-coords-v394"><Crosshair/><span>{Number(merchantForm.lat).toFixed(6)}, {Number(merchantForm.lng).toFixed(6)}</span><b>{merchantForm.pin_confirmed?'Pin listo':'Ajusta el pin'}</b></div>
+              </div>
+
               <label>Logo</label>
               <div className="media-upload-row">
                 <div className="logo-preview">{merchantForm.logo_url?<img src={merchantForm.logo_url} alt=""/>:<Store/>}</div>
@@ -1057,6 +1076,42 @@ function OrderModal({order,items,onClose,onStatus,onAccept,merchant}){
       </footer>
     </section>
   </div>
+}
+
+
+function BusinessPinMap({lat,lng,onChange}){
+  const mapEl=useRef(null),mapRef=useRef(null),markerRef=useRef(null)
+  useEffect(()=>{
+    let cancelled=false
+    async function boot(){
+      if(!document.querySelector('link[data-leaflet-guti]')){
+        const l=document.createElement('link');l.rel='stylesheet';l.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';l.dataset.leafletGuti='1';document.head.appendChild(l)
+      }
+      if(!window.L){
+        await new Promise((resolve,reject)=>{
+          const old=document.querySelector('script[data-leaflet-guti]')
+          if(old){if(window.L)return resolve();old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return}
+          const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.dataset.leafletGuti='1';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)
+        })
+      }
+      if(cancelled||!mapEl.current||!window.L)return
+      const L=window.L
+      if(!mapRef.current){
+        const map=L.map(mapEl.current,{zoomControl:true}).setView([lat,lng],17)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map)
+        const marker=L.marker([lat,lng],{draggable:true}).addTo(map)
+        marker.on('dragend',()=>{const p=marker.getLatLng();onChange?.(p.lat,p.lng)})
+        map.on('click',e=>{marker.setLatLng(e.latlng);onChange?.(e.latlng.lat,e.latlng.lng)})
+        mapRef.current=map;markerRef.current=marker
+        setTimeout(()=>map.invalidateSize(),100)
+      }
+    }
+    boot().catch(console.error)
+    return()=>{cancelled=true}
+  },[])
+  useEffect(()=>{if(mapRef.current&&markerRef.current){markerRef.current.setLatLng([lat,lng]);mapRef.current.panTo([lat,lng])}},[lat,lng])
+  useEffect(()=>()=>{try{mapRef.current?.remove()}catch{};mapRef.current=null;markerRef.current=null},[])
+  return <div ref={mapEl} className="business-pin-map-v394"/>
 }
 
 function Empty({icon:Icon,title,text}){

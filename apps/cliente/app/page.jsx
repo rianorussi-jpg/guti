@@ -1,4 +1,5 @@
 'use client'
+const GUTI_BUILD_V394_CLIENT='3.9.4'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -65,6 +66,8 @@ export default function Page(){
   const [deliveredSuccess,setDeliveredSuccess]=useState(null)
   const [orderLoading,setOrderLoading]=useState(false)
   const activeOrder = activeOrders.find(o=>o.id===trackingOrderId) || activeOrders[0] || null
+  const activeCarouselRef=useRef(null)
+  const activeCarouselScrollRef=useRef(0)
 
   const [tab,setTab]=useState('home')
   const [favoriteIds,setFavoriteIds]=useState([])
@@ -81,19 +84,23 @@ export default function Page(){
   const [email,setEmail]=useState('')
   const [password,setPassword]=useState('')
   const [fullName,setFullName]=useState('')
+  const emailRef=useRef('')
+  const passwordRef=useRef('')
+  const fullNameRef=useRef('')
   const [authBusy,setAuthBusy]=useState(false)
 
   const [showAddressPicker,setShowAddressPicker]=useState(false)
   const [showAddressForm,setShowAddressForm]=useState(false)
   const [addressLabel,setAddressLabel]=useState('Casa')
-  const [addressText,setAddressText]=useState('')
-  const [addressNotes,setAddressNotes]=useState('')
   const [addressBusy,setAddressBusy]=useState(false)
-  const addressTextRef=useRef('')
-  const addressNotesRef=useRef('')
+  const streetRef=useRef('')
+  const exteriorRef=useRef('')
+  const interiorRef=useRef('')
+  const neighborhoodRef=useRef('')
   const [addressPostalCode,setAddressPostalCode]=useState('')
   const [addressLat,setAddressLat]=useState(20.4477)
   const [addressLng,setAddressLng]=useState(-97.0854)
+  const [addressPinConfirmed,setAddressPinConfirmed]=useState(false)
   const [locationBusy,setLocationBusy]=useState(false)
   const addressPostalRef=useRef('')
 
@@ -296,9 +303,16 @@ export default function Page(){
   }
 
   useEffect(()=>{
+    if(showCart||showAuth||showAddressPicker||showCheckout||showTracking)return
     const timer=setInterval(()=>setPromoIndex(i=>(i+1)%2),4500)
     return ()=>clearInterval(timer)
-  },[])
+  },[showCart,showAuth,showAddressPicker,showCheckout,showTracking])
+
+  useEffect(()=>{
+    if(!activeCarouselRef.current)return
+    const saved=activeCarouselScrollRef.current
+    requestAnimationFrame(()=>{if(activeCarouselRef.current)activeCarouselRef.current.scrollLeft=saved})
+  },[promoIndex,activeOrders.length])
 
   useEffect(()=>{
     if(!session?.user?.id) return
@@ -512,9 +526,11 @@ export default function Page(){
 
   async function signIn(){
     if(authBusy)return
-    if(!email.trim()||!password)return setMessage('Escribe correo y contraseña.')
+    const typedEmail=String(emailRef.current||email||'').trim()
+    const typedPassword=String(passwordRef.current||password||'')
+    if(!typedEmail||!typedPassword)return setMessage('Escribe correo y contraseña.')
     setAuthBusy(true);setMessage('')
-    const {error}=await supabase.auth.signInWithPassword({email,password})
+    const {error}=await supabase.auth.signInWithPassword({email:typedEmail,password:typedPassword})
     setAuthBusy(false)
     if(error)setMessage(error.message)
     else{setShowAuth(false);setAuthMode('login')}
@@ -522,11 +538,14 @@ export default function Page(){
 
   async function signUp(){
     if(authBusy)return
-    if(!fullName.trim())return setMessage('Escribe tu nombre.')
-    if(!email.trim())return setMessage('Escribe tu correo.')
-    if(password.length<6)return setMessage('La contraseña debe tener al menos 6 caracteres.')
+    const typedName=String(fullNameRef.current||fullName||'').trim()
+    const typedEmail=String(emailRef.current||email||'').trim()
+    const typedPassword=String(passwordRef.current||password||'')
+    if(!typedName)return setMessage('Escribe tu nombre.')
+    if(!typedEmail)return setMessage('Escribe tu correo.')
+    if(typedPassword.length<6)return setMessage('La contraseña debe tener al menos 6 caracteres.')
     setAuthBusy(true);setMessage('')
-    const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:fullName.trim()}}})
+    const {data,error}=await supabase.auth.signUp({email:typedEmail,password:typedPassword,options:{data:{full_name:typedName}}})
     setAuthBusy(false)
     if(error)return setMessage(error.message)
     setMessage(data?.session?'Cuenta creada correctamente.':'Cuenta creada. Revisa tu correo si se requiere confirmación.')
@@ -545,36 +564,43 @@ export default function Page(){
     if(!navigator.geolocation)return showProfileToast('Este dispositivo no permite obtener ubicación.')
     setLocationBusy(true)
     navigator.geolocation.getCurrentPosition(pos=>{
-      setAddressLat(pos.coords.latitude);setAddressLng(pos.coords.longitude);setLocationBusy(false);showProfileToast('Ubicación detectada. Ajusta el pin si hace falta.')
+      setAddressLat(pos.coords.latitude);setAddressLng(pos.coords.longitude);setAddressPinConfirmed(true);setLocationBusy(false);showProfileToast('Ubicación detectada. Ajusta el pin si hace falta.')
     },()=>{setLocationBusy(false);showProfileToast('No pudimos obtener tu ubicación. Puedes mover el pin manualmente.')},{enableHighAccuracy:true,timeout:12000})
   }
 
   async function saveAddress(){
     if(!session){setShowAddressPicker(false);setShowAuth(true);return}
-    const typedAddress=String(addressTextRef.current||addressText||'').trim()
-    const typedNotes=String(addressNotesRef.current||addressNotes||'').trim()
+    const street=String(streetRef.current||'').trim()
+    const exterior=String(exteriorRef.current||'').trim()
+    const interior=String(interiorRef.current||'').trim()
+    const neighborhood=String(neighborhoodRef.current||'').trim()
     const typedPostal=String(addressPostalRef.current||addressPostalCode||'').replace(/\D/g,'').slice(0,5)
-    if(!typedAddress)return showProfileToast('Escribe tu dirección.')
+    if(!street)return showProfileToast('Escribe la calle.')
+    if(!exterior)return showProfileToast('Escribe el número exterior.')
+    if(!neighborhood)return showProfileToast('Escribe la colonia.')
     if(typedPostal.length!==5)return showProfileToast('Escribe un código postal de 5 dígitos.')
+    if(!addressPinConfirmed)return showProfileToast('Acomoda el pin en la entrada exacta de tu domicilio.')
+    const formatted=`${street} #${exterior}${interior?` Int. ${interior}`:''}, Col. ${neighborhood}, CP ${typedPostal}, Gutiérrez Zamora, Veracruz`
     setAddressBusy(true);setMessage('')
     const makeDefault=addresses.length===0
     const {data,error}=await supabase.from('addresses').insert({
       user_id:session.user.id,
       label:addressLabel.trim()||'Casa',
-      formatted_address:typedAddress,
-      instructions:typedNotes,
+      street,exterior_number:exterior,interior_number:interior||null,neighborhood,
+      formatted_address:formatted,
+      instructions:'',
       postal_code:typedPostal,
-      lat:Number(addressLat),lng:Number(addressLng),pin_confirmed:true,
+      lat:Number(addressLat),lng:Number(addressLng),pin_confirmed:addressPinConfirmed,
       is_default:makeDefault
     }).select().single()
     setAddressBusy(false)
     if(error)return showProfileToast(error.message)
     await loadAddresses(session.user.id)
     setSelectedAddressId(data.id)
-    addressTextRef.current='';addressNotesRef.current='';addressPostalRef.current=''
-    setAddressText('');setAddressNotes('');setAddressPostalCode('');setAddressLabel('Casa')
+    streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current=''
+    setAddressPostalCode('');setAddressLabel('Casa')
     setShowAddressForm(false);setShowAddressPicker(false)
-    showProfileToast('Dirección guardada.')
+    showProfileToast('Dirección y pin guardados.')
   }
 
   async function makeDefaultAddress(id){
@@ -738,9 +764,9 @@ export default function Page(){
           <button className={authMode==='login'?'active':''} onClick={()=>setAuthMode('login')}>Entrar</button>
           <button className={authMode==='register'?'active':''} onClick={()=>setAuthMode('register')}>Crear cuenta</button>
         </div>
-        {authMode==='register'&&<input placeholder="Nombre completo" value={fullName} onChange={e=>setFullName(e.target.value)}/>}
-        <input type="email" placeholder="Correo" value={email} onChange={e=>setEmail(e.target.value)}/>
-        <input type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)}/>
+        {authMode==='register'&&<input placeholder="Nombre completo" defaultValue={fullName} onInput={e=>{fullNameRef.current=e.currentTarget.value}} autoComplete="name"/>}
+        <input type="email" placeholder="Correo" defaultValue={email} onInput={e=>{emailRef.current=e.currentTarget.value}} autoComplete="email"/>
+        <input type="password" placeholder="Contraseña" defaultValue={password} onInput={e=>{passwordRef.current=e.currentTarget.value}} autoComplete={authMode==='login'?'current-password':'new-password'}/>
         <button className="primary-wide" disabled={authBusy} onClick={authMode==='login'?signIn:signUp}>
           {authBusy?'Espera...':authMode==='login'?'Entrar':'Crear mi cuenta'}
         </button>
@@ -777,7 +803,7 @@ export default function Page(){
               </div>
             </article>)}
           </div>
-          <button className="add-address-btn" onClick={()=>{addressTextRef.current=addressText;addressNotesRef.current=addressNotes;addressPostalRef.current=addressPostalCode;setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
+          <button className="add-address-btn" onClick={()=>{streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current='';setAddressPostalCode('');setAddressPinConfirmed(false);setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
         </>}
 
         {session&&showAddressForm&&<div className="address-form">
@@ -786,20 +812,15 @@ export default function Page(){
           <div className="label-pills">
             {['Casa','Trabajo','Otro'].map(x=><button className={addressLabel===x?'active':''} key={x} onClick={()=>setAddressLabel(x)}>{x}</button>)}
           </div>
-          <label>Dirección escrita</label>
-          <textarea
-            rows="3"
-            defaultValue={addressText}
-            placeholder="Ej. Calle Juárez #123, Centro, a un lado de..."
-            onInput={e=>{addressTextRef.current=e.currentTarget.value}}
-            autoComplete="street-address"
-          />
-          <label>Código postal</label>
-          <input inputMode="numeric" maxLength="5" defaultValue={addressPostalCode} placeholder="Ej. 93556" onInput={e=>{const v=e.currentTarget.value.replace(/\D/g,'').slice(0,5);e.currentTarget.value=v;addressPostalRef.current=v}}/>
-          <label>Referencias</label>
-          <textarea rows="2" defaultValue={addressNotes} placeholder="Casa color azul, portón negro..." onInput={e=>{addressNotesRef.current=e.currentTarget.value}}/>
+          <div className="address-structured-grid">
+            <label className="wide">Calle<input defaultValue="" placeholder="Ej. Benito Juárez" onInput={e=>{streetRef.current=e.currentTarget.value}} autoComplete="address-line1"/></label>
+            <label>Núm. ext.<input defaultValue="" inputMode="text" placeholder="123" onInput={e=>{exteriorRef.current=e.currentTarget.value}}/></label>
+            <label>Núm. int. <small>(si hay)</small><input defaultValue="" placeholder="4B" onInput={e=>{interiorRef.current=e.currentTarget.value}}/></label>
+            <label className="wide">Colonia<input defaultValue="" placeholder="Centro" onInput={e=>{neighborhoodRef.current=e.currentTarget.value}} autoComplete="address-level3"/></label>
+            <label className="wide">Código postal<input inputMode="numeric" maxLength="5" defaultValue={addressPostalCode} placeholder="93556" onInput={e=>{const v=e.currentTarget.value.replace(/\D/g,'').slice(0,5);e.currentTarget.value=v;addressPostalRef.current=v}} autoComplete="postal-code"/></label>
+          </div>
           <div className="pin-map-head"><div><b>Marca la entrada exacta</b><small>Mueve el pin hasta tu casa o entrada.</small></div><button onClick={useMyLocation} disabled={locationBusy}><LocateFixed/>{locationBusy?'Buscando...':'Usar mi ubicación'}</button></div>
-          <AddressPinMap lat={addressLat} lng={addressLng} onChange={(lat,lng)=>{setAddressLat(lat);setAddressLng(lng)}}/>
+          <AddressPinMap lat={addressLat} lng={addressLng} onChange={(lat,lng)=>{setAddressLat(lat);setAddressLng(lng);setAddressPinConfirmed(true)}}/>
           <div className="pin-coordinates"><Crosshair/><span>{Number(addressLat).toFixed(6)}, {Number(addressLng).toFixed(6)}</span></div>
           <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':'Guardar dirección y pin'}</button>
         </div>}
@@ -1060,6 +1081,7 @@ export default function Page(){
           <button className="primary-wide" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
           <button className="support-tracking-btn" onClick={openSupport}><Headphones/>Soporte Guti</button>
         </section>
+        {SupportModal()}
       </main>
     }
 
@@ -1097,6 +1119,7 @@ export default function Page(){
           {order.status==='pending'&&<button className="cancel-order-v39" onClick={()=>cancelTrackedOrder(order)}>Cancelar pedido</button>}
         </div>
       </section>
+      {SupportModal()}
     </main>
   }
 
@@ -1141,7 +1164,7 @@ export default function Page(){
     if(!activeOrders.length)return null
     return <section className="orders-carousel-section-v2">
       <div className="section-title"><div><small>EN CURSO</small><h2>{activeOrders.length===1?'Tu pedido':'Tus pedidos'}</h2></div>{activeOrders.length>1&&<span>Desliza →</span>}</div>
-      <div className="active-orders-carousel-v2">
+      <div className="active-orders-carousel-v2" ref={activeCarouselRef} onScroll={e=>{activeCarouselScrollRef.current=e.currentTarget.scrollLeft}}>
         {activeOrders.map((o,index)=><article className="active-order-card-v2" key={o.id}>
           <div className="active-order-top"><span className="status-dot"/><small>{statusLabel(o.status)}</small><em>{index+1}/{activeOrders.length}</em></div>
           <div className="active-order-main">
@@ -1422,7 +1445,7 @@ export default function Page(){
 
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
-      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{SupportModal()}{AuthModal()}{AddressModal()}
+      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}
     </main>
   }
 
@@ -1439,7 +1462,7 @@ export default function Page(){
     </div>
     <BottomNav/>
     {profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')} aria-label="Cerrar"><X/></button></div>}
-    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{SupportModal()}{AuthModal()}{AddressModal()}
+    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}
   </main>
 }
 
