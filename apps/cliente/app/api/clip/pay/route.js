@@ -37,6 +37,9 @@ export async function POST(request){
 
     const {data:address}=await admin.from('addresses').select('id').eq('id',addressId).eq('user_id',user.id).maybeSingle()
     if(!address)return fail('La dirección seleccionada no es válida.',403)
+    const {data:zoneRows,error:zoneError}=await admin.rpc('check_service_zone',{p_address_id:addressId})
+    const zone=Array.isArray(zoneRows)?zoneRows[0]:zoneRows
+    if(zoneError||!zone?.allowed)return fail('Por ahora Guti sólo entrega dentro de Gutiérrez Zamora. Ajusta el pin a una dirección dentro de la zona de servicio.',400,{code:'OUTSIDE_SERVICE_ZONE'})
 
     const {data:merchant}=await admin.from('merchants').select('id,name,delivery_mode,is_active,accepts_orders').eq('id',merchantId).maybeSingle()
     if(!merchant||!merchant.is_active)return fail('Este negocio no está disponible.')

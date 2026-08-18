@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V395_CLIENT='3.9.5'
+const GUTI_BUILD_V400_CLIENT='4.0.0'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -697,6 +697,9 @@ export default function Page(){
     const group=cartGroups.find(g=>g.merchantId===merchantId)
     if(!session||!group||!group.items.length)return
     if(!selectedAddress){setCheckoutStep(1);return}
+    const {data:zoneRows,error:zoneError}=await supabase.rpc('check_service_zone',{p_address_id:selectedAddress.id})
+    const zone=Array.isArray(zoneRows)?zoneRows[0]:zoneRows
+    if(zoneError||!zone?.allowed){setMessage('Por ahora Guti sólo entrega dentro de Gutiérrez Zamora. Ajusta el pin a una dirección dentro de la zona de servicio.');setCheckoutStep(1);return}
 
     const q=await quoteCheckout(group)
     const finalTotal=Number(q?.total??group.total)

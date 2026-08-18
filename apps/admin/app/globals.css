@@ -137,3 +137,6 @@
 .recon-mismatch{background:#fff3f3}.recon-mismatch mark{background:#ffe0e0;color:#9d2d2d}.settlement-admin-buttons{display:flex;gap:5px;flex-wrap:wrap}.settlement-admin-buttons button{white-space:nowrap}
 
 .ops-alerts-v39{background:#fff;border:1px solid #efc5c5;border-radius:16px;padding:14px;margin-bottom:14px}.ops-alert-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.ops-alert-head b{color:#a12d2d}.ops-alert-head span{font-size:9px;background:#ffe5e5;color:#a12d2d;border-radius:99px;padding:5px 8px;font-weight:900}.ops-alerts-v39 article{display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0;border-top:1px solid #f3dddd}.ops-alerts-v39 strong{font-size:11px}.ops-alerts-v39 p{font-size:9px;color:#666;margin:2px 0}.ops-alerts-v39 small{font-size:8px;color:#999}.ops-alerts-v39 article button{border:0;background:#a12d2d;color:#fff;border-radius:9px;padding:8px 10px;font-size:8px;font-weight:900}
+
+/* v4.0 */
+.central-alert-v40{background:#fff7f1}.central-alert-v40 mark{background:#ffe2d2;color:#9b3100}.danger-v40{background:#a51d1d!important;color:#fff!important}

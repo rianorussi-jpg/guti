@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V394_NEGOCIO='3.9.4'
+const GUTI_BUILD_V400_NEGOCIO='4.0.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, ReceiptText, PackageSearch, Store, Clock3, Settings, LogOut,
@@ -53,6 +53,8 @@ export default function Page(){
   const [products,setProducts]=useState([])
   const [categories,setCategories]=useState([])
   const [hours,setHours]=useState([])
+  const [specialHours,setSpecialHours]=useState([])
+  const [specialForm,setSpecialForm]=useState({special_date:'',is_closed:true,open_time:'09:00',close_time:'21:00',note:''})
   const [tab,setTab]=useState('dashboard')
   const [msg,setMsg]=useState('')
   const [busy,setBusy]=useState(false)
@@ -296,6 +298,8 @@ export default function Page(){
       merchant_id:merchantId,day_of_week:i,day_key:key,day_label:label,
       is_closed:i===6,open_time:'09:00',close_time:'21:00'
     }))
+    const {data:special}=await supabase.from('merchant_special_hours').select('*').eq('merchant_id',merchantId).gte('special_date',new Date().toISOString().slice(0,10)).order('special_date')
+    setSpecialHours(special||[])
   }
 
   async function login(e){
@@ -587,6 +591,9 @@ export default function Page(){
     if(fresh){setMerchant(fresh);setMerchantForm(prev=>({...prev,accepts_orders:fresh.accepts_orders!==false}))}
     setMsg('Horarios guardados y apertura automática actualizada.')
   }
+
+  async function saveSpecialHour(e){e?.preventDefault();if(!merchant||!specialForm.special_date)return setMsg('Elige una fecha.');setBusy(true);const payload={merchant_id:merchant.id,...specialForm,open_time:specialForm.is_closed?null:specialForm.open_time,close_time:specialForm.is_closed?null:specialForm.close_time};const {error}=await supabase.from('merchant_special_hours').upsert(payload,{onConflict:'merchant_id,special_date'});setBusy(false);if(error)return setMsg(error.message);await loadHours(merchant.id);setSpecialForm({special_date:'',is_closed:true,open_time:'09:00',close_time:'21:00',note:''});setMsg('Horario especial guardado.')}
+  async function deleteSpecialHour(id){const {error}=await supabase.from('merchant_special_hours').delete().eq('id',id);if(error)return setMsg(error.message);await loadHours(merchant.id)}
 
   function updateHour(index,patch){setHours(prev=>prev.map((h,i)=>i===index?{...h,...patch}:h))}
 
@@ -882,6 +889,7 @@ export default function Page(){
               <input type="time" disabled={h.is_closed} value={h.close_time?.slice(0,5)||'21:00'} onChange={e=>updateHour(i,{close_time:e.target.value})}/>
             </article>)}
           </section>
+          <section className="panel special-hours-v40"><div className="panel-head"><div><small>EXCEPCIONES</small><h3>Horarios especiales</h3><p>Vacaciones, festivos o un cierre/apertura diferente para una fecha específica.</p></div></div><div className="special-hour-form-v40"><input type="date" value={specialForm.special_date} onChange={e=>setSpecialForm(p=>({...p,special_date:e.target.value}))}/><select value={specialForm.is_closed?'closed':'custom'} onChange={e=>setSpecialForm(p=>({...p,is_closed:e.target.value==='closed'}))}><option value="closed">Cerrado todo el día</option><option value="custom">Horario especial</option></select>{!specialForm.is_closed&&<><input type="time" value={specialForm.open_time} onChange={e=>setSpecialForm(p=>({...p,open_time:e.target.value}))}/><input type="time" value={specialForm.close_time} onChange={e=>setSpecialForm(p=>({...p,close_time:e.target.value}))}/></>}<input placeholder="Motivo opcional" value={specialForm.note} onChange={e=>setSpecialForm(p=>({...p,note:e.target.value}))}/><button onClick={saveSpecialHour}>Agregar</button></div><div className="special-hour-list-v40">{specialHours.map(s=><article key={s.id}><div><b>{new Date(s.special_date+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</b><small>{s.is_closed?'Cerrado':`${String(s.open_time).slice(0,5)} – ${String(s.close_time).slice(0,5)}`} {s.note?`· ${s.note}`:''}</small></div><button onClick={()=>deleteSpecialHour(s.id)}>Eliminar</button></article>)}</div></section>
         </>}
 
         {tab==='payments'&&<>
