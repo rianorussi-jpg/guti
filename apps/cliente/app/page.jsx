@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V394_CLIENT='3.9.4'
+const GUTI_BUILD_V395_CLIENT='3.9.5'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -100,6 +100,10 @@ export default function Page(){
   const [addressPostalCode,setAddressPostalCode]=useState('')
   const [addressLat,setAddressLat]=useState(20.4477)
   const [addressLng,setAddressLng]=useState(-97.0854)
+  const addressLatRef=useRef(20.4477)
+  const addressLngRef=useRef(-97.0854)
+  const addressModalScrollRef=useRef(null)
+  const addressModalScrollTopRef=useRef(0)
   const [addressPinConfirmed,setAddressPinConfirmed]=useState(false)
   const [locationBusy,setLocationBusy]=useState(false)
   const addressPostalRef=useRef('')
@@ -115,6 +119,7 @@ export default function Page(){
   const [cardError,setCardError]=useState('')
   const [supportOpen,setSupportOpen]=useState(false)
   const [supportTopic,setSupportTopic]=useState('pedido')
+  const [supportOrderId,setSupportOrderId]=useState(null)
   const [couponCode,setCouponCode]=useState('')
   const [checkoutQuote,setCheckoutQuote]=useState(null)
   const [pointsToUse,setPointsToUse]=useState(0)
@@ -199,13 +204,29 @@ export default function Page(){
     catch(e){showProfileToast(e.message||'No se pudieron activar las notificaciones.')}
   }
 
-  function openSupport(){setSupportOpen(true)}
+  function openSupport(orderId=null){
+    setSupportOrderId(orderId||null)
+    setSupportTopic('pedido')
+    setSupportOpen(true)
+  }
+
+  function supportOrders(){
+    const map=new Map()
+    for(const o of [...(activeOrders||[]),...(orderHistory||[])])if(o?.id&&!map.has(o.id))map.set(o.id,o)
+    return [...map.values()].slice(0,15)
+  }
+
   function sendSupport(){
-    const active=activeOrders?.[0]
+    const selected=supportOrders().find(o=>o.id===supportOrderId)||null
+    if(supportTopic==='pedido'&&!selected){
+      return showProfileToast('Selecciona con cuál pedido necesitas ayuda.',4000)
+    }
     const labels={pedido:'Problema con mi pedido',pago:'Pago o cobro',reembolso:'Cancelación / reembolso',otro:'Otra ayuda'}
-    const text=encodeURIComponent(`Hola Guti, necesito ayuda. Motivo: ${labels[supportTopic]}.${active?.id?` Pedido #${active.id.slice(0,8)}.`:''} Mi cuenta: ${session?.user?.email||'sin sesión'}.`)
+    const orderText=selected?` Pedido #${selected.id.slice(0,8)} (${selected.merchants?.name||'negocio'}, ${statusLabel(selected.status)}).`:''
+    const text=encodeURIComponent(`Hola Guti, necesito ayuda. Motivo: ${labels[supportTopic]}.${orderText} Mi cuenta: ${session?.user?.email||'sin sesión'}.`)
     window.open(`https://wa.me/525623449135?text=${text}`,'_blank','noopener,noreferrer')
   }
+
 
   async function quoteCheckout(group){
     if(!session||!group)return null
@@ -315,6 +336,13 @@ export default function Page(){
   },[promoIndex,activeOrders.length])
 
   useEffect(()=>{
+    if(!showAddressPicker||!showAddressForm||!addressModalScrollRef.current)return
+    const saved=addressModalScrollTopRef.current
+    requestAnimationFrame(()=>{if(addressModalScrollRef.current)addressModalScrollRef.current.scrollTop=saved})
+  },[showAddressPicker,showAddressForm,addressLat,addressLng,addressPinConfirmed,addressBusy,locationBusy])
+
+
+  useEffect(()=>{
     if(!session?.user?.id) return
     const channel=supabase
       .channel(`guti-customer-${session.user.id}`)
@@ -328,15 +356,16 @@ export default function Page(){
           setTrackingOrderId(payload.new.id)
           setShowTracking(true)
         }
-        await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
+        if(!showAddressPicker&&!showAuth)await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
       })
       .subscribe()
     const fallback=setInterval(()=>{
+      if(showAddressPicker||showAuth)return
       loadActiveOrders(session.user.id)
       loadOrderHistory(session.user.id)
     },15000)
     return ()=>{clearInterval(fallback);supabase.removeChannel(channel)}
-  },[session?.user?.id,trackingOrderId])
+  },[session?.user?.id,trackingOrderId,showAddressPicker,showAuth])
 
   async function applySession(s){
     setSession(s)
@@ -564,7 +593,7 @@ export default function Page(){
     if(!navigator.geolocation)return showProfileToast('Este dispositivo no permite obtener ubicación.')
     setLocationBusy(true)
     navigator.geolocation.getCurrentPosition(pos=>{
-      setAddressLat(pos.coords.latitude);setAddressLng(pos.coords.longitude);setAddressPinConfirmed(true);setLocationBusy(false);showProfileToast('Ubicación detectada. Ajusta el pin si hace falta.')
+      addressLatRef.current=pos.coords.latitude;addressLngRef.current=pos.coords.longitude;setAddressLat(pos.coords.latitude);setAddressLng(pos.coords.longitude);setAddressPinConfirmed(true);setLocationBusy(false);showProfileToast('Ubicación detectada. Ajusta el pin si hace falta.')
     },()=>{setLocationBusy(false);showProfileToast('No pudimos obtener tu ubicación. Puedes mover el pin manualmente.')},{enableHighAccuracy:true,timeout:12000})
   }
 
@@ -590,7 +619,7 @@ export default function Page(){
       formatted_address:formatted,
       instructions:'',
       postal_code:typedPostal,
-      lat:Number(addressLat),lng:Number(addressLng),pin_confirmed:addressPinConfirmed,
+      lat:Number(addressLatRef.current),lng:Number(addressLngRef.current),pin_confirmed:addressPinConfirmed,
       is_default:makeDefault
     }).select().single()
     setAddressBusy(false)
@@ -744,13 +773,26 @@ export default function Page(){
 
   function SupportModal(){
     if(!supportOpen)return null
-    return <div className="modal-backdrop" onClick={()=>setSupportOpen(false)}><section className="modal-card support-modal-v38" onClick={e=>e.stopPropagation()}>
+    const orders=supportOrders()
+    const selected=orders.find(o=>o.id===supportOrderId)||null
+    const needsOrder=supportTopic==='pedido'&&!selected
+    return <div className="modal-backdrop support-global-backdrop-v395" onClick={()=>setSupportOpen(false)}><section className="modal-card support-modal-v38 support-modal-v395" onClick={e=>e.stopPropagation()}>
       <button className="modal-close" onClick={()=>setSupportOpen(false)}><X/></button>
-      <small className="eyebrow">SOPORTE GUTI</small><h2>¿En qué te ayudamos?</h2><p className="muted">Al continuar abriremos WhatsApp con la información básica de tu cuenta y pedido.</p>
+      <small className="eyebrow">SOPORTE GUTI</small><h2>¿En qué te ayudamos?</h2>
+      {selected
+        ? <div className="support-selected-order-v395"><ReceiptText/><div><small>PEDIDO SELECCIONADO</small><b>#{selected.id.slice(0,8)} · {selected.merchants?.name||'Pedido Guti'}</b><span>{statusLabel(selected.status)} · ${Number(selected.total||0).toFixed(2)}</span></div>{!showTracking&&<button onClick={()=>setSupportOrderId(null)}>Cambiar</button>}</div>
+        : <p className="muted">Al continuar abriremos WhatsApp con la información de tu cuenta.</p>}
       <div className="support-topics-v38">{[['pedido','Problema con mi pedido'],['pago','Pago o cobro'],['reembolso','Cancelación / reembolso'],['otro','Otra ayuda']].map(([id,label])=><button className={supportTopic===id?'active':''} key={id} onClick={()=>setSupportTopic(id)}>{label}</button>)}</div>
-      <button className="primary-wide" onClick={sendSupport}>Hablar con soporte</button>
+      {supportTopic==='pedido'&&!selected&&<div className="support-order-picker-v395">
+        <b>¿Con cuál pedido necesitas ayuda?</b>
+        {orders.length
+          ? <div>{orders.map(o=><button key={o.id} onClick={()=>setSupportOrderId(o.id)}><span><strong>#{o.id.slice(0,8)}</strong><small>{o.merchants?.name||'Pedido Guti'} · {statusLabel(o.status)}</small></span><em>${Number(o.total||0).toFixed(2)}</em><ChevronRight/></button>)}</div>
+          : <p>No encontramos pedidos recientes en esta cuenta.</p>}
+      </div>}
+      <button className="primary-wide" disabled={needsOrder} onClick={sendSupport}>{needsOrder?'Selecciona un pedido':'Hablar con soporte'}</button>
     </section></div>
   }
+
 
   function AuthModal(){
     if(!showAuth)return null
@@ -778,7 +820,7 @@ export default function Page(){
   function AddressModal(){
     if(!showAddressPicker)return null
     return <div className="modal-backdrop address-backdrop" onClick={()=>setShowAddressPicker(false)}>
-      <section className="modal-card address-modal" onClick={e=>e.stopPropagation()}>
+      <section className="modal-card address-modal" ref={addressModalScrollRef} onScroll={e=>{addressModalScrollTopRef.current=e.currentTarget.scrollTop}} onClick={e=>e.stopPropagation()}>
         <div className="between">
           <div><small className="eyebrow">ENTREGAR EN</small><h2>Mis direcciones</h2></div>
           <button className="modal-close static" onClick={()=>setShowAddressPicker(false)}><X/></button>
@@ -803,7 +845,7 @@ export default function Page(){
               </div>
             </article>)}
           </div>
-          <button className="add-address-btn" onClick={()=>{streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current='';setAddressPostalCode('');setAddressPinConfirmed(false);setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
+          <button className="add-address-btn" onClick={()=>{streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current='';addressLatRef.current=20.4477;addressLngRef.current=-97.0854;addressModalScrollTopRef.current=0;setAddressLat(20.4477);setAddressLng(-97.0854);setAddressPostalCode('');setAddressPinConfirmed(false);setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
         </>}
 
         {session&&showAddressForm&&<div className="address-form">
@@ -820,7 +862,7 @@ export default function Page(){
             <label className="wide">Código postal<input inputMode="numeric" maxLength="5" defaultValue={addressPostalCode} placeholder="93556" onInput={e=>{const v=e.currentTarget.value.replace(/\D/g,'').slice(0,5);e.currentTarget.value=v;addressPostalRef.current=v}} autoComplete="postal-code"/></label>
           </div>
           <div className="pin-map-head"><div><b>Marca la entrada exacta</b><small>Mueve el pin hasta tu casa o entrada.</small></div><button onClick={useMyLocation} disabled={locationBusy}><LocateFixed/>{locationBusy?'Buscando...':'Usar mi ubicación'}</button></div>
-          <AddressPinMap lat={addressLat} lng={addressLng} onChange={(lat,lng)=>{setAddressLat(lat);setAddressLng(lng);setAddressPinConfirmed(true)}}/>
+          <AddressPinMap lat={addressLat} lng={addressLng} onChange={(lat,lng)=>{addressLatRef.current=lat;addressLngRef.current=lng;setAddressLat(lat);setAddressLng(lng);setAddressPinConfirmed(true)}}/>
           <div className="pin-coordinates"><Crosshair/><span>{Number(addressLat).toFixed(6)}, {Number(addressLng).toFixed(6)}</span></div>
           <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':'Guardar dirección y pin'}</button>
         </div>}
@@ -1079,7 +1121,7 @@ export default function Page(){
           <p>Gracias por pedir con Guti.mx. Esperamos que lo disfrutes.</p>
           <div className="tracking-summary"><div><span>Pedido</span><b>#{delivered.id?.slice(0,8)}</b></div><div><span>Total</span><b>${Number(delivered.total||0).toFixed(2)}</b></div></div>
           <button className="primary-wide" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
-          <button className="support-tracking-btn" onClick={openSupport}><Headphones/>Soporte Guti</button>
+          <button className="support-tracking-btn" onClick={()=>openSupport(delivered.id)}><Headphones/>Soporte Guti</button>
         </section>
         {SupportModal()}
       </main>
@@ -1115,7 +1157,7 @@ export default function Page(){
         {order.payment_method==='card'&&order.delivery_pin&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
         <div className="tracking-actions-v39">
           <button className="secondary-wide" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
-          <button className="support-tracking-btn" onClick={openSupport}><Headphones/>Soporte</button>
+          <button className="support-tracking-btn" onClick={()=>openSupport(order.id)}><Headphones/>Soporte</button>
           {order.status==='pending'&&<button className="cancel-order-v39" onClick={()=>cancelTrackedOrder(order)}>Cancelar pedido</button>}
         </div>
       </section>
@@ -1150,7 +1192,7 @@ export default function Page(){
         <ChevronDown/>
       </button>
       <div className="header-actions-v3">
-        <button className="support-btn-v36" onClick={openSupport} title="Soporte Guti"><Headphones/><span>Soporte</span></button>
+        <button className="support-btn-v36" onClick={()=>openSupport(null)} title="Soporte Guti"><Headphones/><span>Soporte</span></button>
         <button className="cart-btn-v3" onClick={()=>setShowCart(true)}>
           <ShoppingCart/>
           {cartCount>0&&<span>{cartCount}</span>}
