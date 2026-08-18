@@ -1,4 +1,5 @@
 'use client'
+const GUTI_BUILD_V392_REPARTIDOR='3.9.2'
 const GUTI_BUILD_V390_REPARTIDOR='3.9.0'
 import { useEffect,useMemo,useState } from 'react'
 import {
@@ -201,9 +202,30 @@ export default function Page(){
   const todayTrips=history.filter(o=>new Date(o.delivered_at||o.created_at)>=startToday).length
   const weekTrips=history.filter(o=>new Date(o.delivered_at||o.created_at)>=startWeek).length
 
-  const navTarget=o=>o?.addresses?.lat&&o?.addresses?.lng?`${o.addresses.lat},${o.addresses.lng}`:(o?.addresses?.formatted_address||'Gutiérrez Zamora, Veracruz')
-  const googleUrl=o=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navTarget(o))}`
-  const wazeUrl=o=>o?.addresses?.lat&&o?.addresses?.lng?`https://www.waze.com/ul?ll=${o.addresses.lat}%2C${o.addresses.lng}&navigate=yes`:`https://www.waze.com/ul?q=${encodeURIComponent(navTarget(o))}&navigate=yes`
+  const addressOf=o=>Array.isArray(o?.addresses)?o.addresses[0]:o?.addresses
+  const pinOf=o=>{
+    const a=addressOf(o)
+    const lat=Number(o?.delivery_lat??a?.lat)
+    const lng=Number(o?.delivery_lng??a?.lng)
+    return Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180?{lat,lng}:null
+  }
+  const navTarget=o=>{
+    const pin=pinOf(o)
+    const a=addressOf(o)
+    return pin?`${pin.lat},${pin.lng}`:(a?.formatted_address||'Gutiérrez Zamora, Veracruz')
+  }
+  const googleUrl=o=>{
+    const pin=pinOf(o)
+    return pin
+      ? `https://www.google.com/maps/dir/?api=1&destination=${pin.lat}%2C${pin.lng}&travelmode=driving`
+      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(navTarget(o))}&travelmode=driving`
+  }
+  const wazeUrl=o=>{
+    const pin=pinOf(o)
+    return pin
+      ? `https://www.waze.com/ul?ll=${pin.lat}%2C${pin.lng}&navigate=yes`
+      : `https://www.waze.com/ul?q=${encodeURIComponent(navTarget(o))}&navigate=yes`
+  }
 
   if(!session)return <main className="courier-login">
     <section className="courier-login-card">
@@ -275,6 +297,7 @@ export default function Page(){
               <span className="payment-method-pill">{paymentName(active.payment_method)}</span>
             </div>}
 
+            {pinOf(active)&&<div className="exact-pin-note"><MapPin/><span>Pin exacto de entrega</span><b>{pinOf(active).lat.toFixed(6)}, {pinOf(active).lng.toFixed(6)}</b></div>}
             <div className="map-actions">
               <a target="_blank" rel="noreferrer" href={active.status==='assigned'?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(active.merchants?.address||'Gutiérrez Zamora, Veracruz')}`:googleUrl(active)}><Map/>Google Maps</a>
               <a target="_blank" rel="noreferrer" href={active.status==='assigned'?`https://www.waze.com/ul?q=${encodeURIComponent(active.merchants?.address||'Gutiérrez Zamora, Veracruz')}&navigate=yes`:wazeUrl(active)}><Navigation/>Waze</a>
