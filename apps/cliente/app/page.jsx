@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V400_CLIENT='4.0.0'
+const GUTI_BUILD_V401_CLIENT='4.0.1'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -91,6 +91,8 @@ export default function Page(){
 
   const [showAddressPicker,setShowAddressPicker]=useState(false)
   const [showAddressForm,setShowAddressForm]=useState(false)
+  const [editingAddressId,setEditingAddressId]=useState(null)
+  const [addressFormKey,setAddressFormKey]=useState(0)
   const [addressLabel,setAddressLabel]=useState('Casa')
   const [addressBusy,setAddressBusy]=useState(false)
   const streetRef=useRef('')
@@ -597,8 +599,39 @@ export default function Page(){
     },()=>{setLocationBusy(false);showProfileToast('No pudimos obtener tu ubicación. Puedes mover el pin manualmente.')},{enableHighAccuracy:true,timeout:12000})
   }
 
+  async function validateAddressZone(lat,lng){
+    const {data,error}=await supabase.rpc('check_service_zone_coords_v401',{p_lat:Number(lat),p_lng:Number(lng)})
+    if(error)return {allowed:false,error:error.message}
+    const row=Array.isArray(data)?data[0]:data
+    return {allowed:!!row?.allowed,distance:Number(row?.distance_km||0),zone:row?.zone_name||'Gutiérrez Zamora'}
+  }
+
+  function startNewAddress(){
+    setEditingAddressId(null)
+    streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current=''
+    addressLatRef.current=20.4477;addressLngRef.current=-97.0854;addressModalScrollTopRef.current=0
+    setAddressLat(20.4477);setAddressLng(-97.0854);setAddressPostalCode('');setAddressLabel('Casa');setAddressPinConfirmed(false)
+    setAddressFormKey(k=>k+1);setShowAddressForm(true)
+  }
+
+  function editAddress(a){
+    if(!a)return
+    setEditingAddressId(a.id)
+    streetRef.current=a.street||''
+    exteriorRef.current=a.exterior_number||''
+    interiorRef.current=a.interior_number||''
+    neighborhoodRef.current=a.neighborhood||''
+    addressPostalRef.current=a.postal_code||''
+    addressLatRef.current=Number(a.lat||20.4477);addressLngRef.current=Number(a.lng||-97.0854)
+    addressModalScrollTopRef.current=0
+    setAddressLat(addressLatRef.current);setAddressLng(addressLngRef.current)
+    setAddressPostalCode(a.postal_code||'');setAddressLabel(a.label||'Casa');setAddressPinConfirmed(!!a.pin_confirmed)
+    setAddressFormKey(k=>k+1);setShowAddressForm(true)
+  }
+
   async function saveAddress(){
     if(!session){setShowAddressPicker(false);setShowAuth(true);return}
+    const wasEditing=!!editingAddressId
     const street=String(streetRef.current||'').trim()
     const exterior=String(exteriorRef.current||'').trim()
     const interior=String(interiorRef.current||'').trim()
@@ -609,27 +642,40 @@ export default function Page(){
     if(!neighborhood)return showProfileToast('Escribe la colonia.')
     if(typedPostal.length!==5)return showProfileToast('Escribe un código postal de 5 dígitos.')
     if(!addressPinConfirmed)return showProfileToast('Acomoda el pin en la entrada exacta de tu domicilio.')
-    const formatted=`${street} #${exterior}${interior?` Int. ${interior}`:''}, Col. ${neighborhood}, CP ${typedPostal}, Gutiérrez Zamora, Veracruz`
+
     setAddressBusy(true);setMessage('')
-    const makeDefault=addresses.length===0
-    const {data,error}=await supabase.from('addresses').insert({
+    const zone=await validateAddressZone(addressLatRef.current,addressLngRef.current)
+    if(!zone.allowed){
+      setAddressBusy(false)
+      return showProfileToast(zone.error||'Esa ubicación está fuera de Gutiérrez Zamora. Mueve el pin dentro de la zona de servicio para guardar la dirección.',6500)
+    }
+
+    const formatted=`${street} #${exterior}${interior?` Int. ${interior}`:''}, Col. ${neighborhood}, CP ${typedPostal}, Gutiérrez Zamora, Veracruz`
+    const payload={
       user_id:session.user.id,
       label:addressLabel.trim()||'Casa',
       street,exterior_number:exterior,interior_number:interior||null,neighborhood,
-      formatted_address:formatted,
-      instructions:'',
-      postal_code:typedPostal,
-      lat:Number(addressLatRef.current),lng:Number(addressLngRef.current),pin_confirmed:addressPinConfirmed,
-      is_default:makeDefault
-    }).select().single()
+      formatted_address:formatted,instructions:'',postal_code:typedPostal,
+      lat:Number(addressLatRef.current),lng:Number(addressLngRef.current),pin_confirmed:true
+    }
+
+    let data,error
+    if(editingAddressId){
+      const res=await supabase.from('addresses').update(payload).eq('id',editingAddressId).eq('user_id',session.user.id).select().single()
+      data=res.data;error=res.error
+    }else{
+      const res=await supabase.from('addresses').insert({...payload,is_default:addresses.length===0}).select().single()
+      data=res.data;error=res.error
+    }
+
     setAddressBusy(false)
-    if(error)return showProfileToast(error.message)
+    if(error)return showProfileToast(error.message,5500)
     await loadAddresses(session.user.id)
     setSelectedAddressId(data.id)
     streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current=''
-    setAddressPostalCode('');setAddressLabel('Casa')
+    setAddressPostalCode('');setAddressLabel('Casa');setEditingAddressId(null)
     setShowAddressForm(false);setShowAddressPicker(false)
-    showProfileToast('Dirección y pin guardados.')
+    showProfileToast(wasEditing?'Dirección actualizada.':'Dirección y pin guardados.')
   }
 
   async function makeDefaultAddress(id){
@@ -825,7 +871,7 @@ export default function Page(){
     return <div className="modal-backdrop address-backdrop" onClick={()=>setShowAddressPicker(false)}>
       <section className="modal-card address-modal" ref={addressModalScrollRef} onScroll={e=>{addressModalScrollTopRef.current=e.currentTarget.scrollTop}} onClick={e=>e.stopPropagation()}>
         <div className="between">
-          <div><small className="eyebrow">ENTREGAR EN</small><h2>Mis direcciones</h2></div>
+          <div><small className="eyebrow">ENTREGAR EN</small><h2>{showAddressForm?(editingAddressId?'Editar dirección':'Nueva dirección'):'Mis direcciones'}</h2></div>
           <button className="modal-close static" onClick={()=>setShowAddressPicker(false)}><X/></button>
         </div>
 
@@ -844,30 +890,31 @@ export default function Page(){
               </button>
               <div className="address-actions">
                 {!a.is_default&&<button onClick={()=>makeDefaultAddress(a.id)}>Hacer principal</button>}
+                <button onClick={()=>editAddress(a)}>Editar</button>
                 {addresses.length>1&&<button className="danger" onClick={()=>deleteAddress(a.id)}>Eliminar</button>}
               </div>
             </article>)}
           </div>
-          <button className="add-address-btn" onClick={()=>{streetRef.current='';exteriorRef.current='';interiorRef.current='';neighborhoodRef.current='';addressPostalRef.current='';addressLatRef.current=20.4477;addressLngRef.current=-97.0854;addressModalScrollTopRef.current=0;setAddressLat(20.4477);setAddressLng(-97.0854);setAddressPostalCode('');setAddressPinConfirmed(false);setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
+          <button className="add-address-btn" onClick={startNewAddress}><Plus/> Agregar otra dirección</button>
         </>}
 
-        {session&&showAddressForm&&<div className="address-form">
-          <button className="text-back" onClick={()=>setShowAddressForm(false)}><ArrowLeft/> Volver</button>
+        {session&&showAddressForm&&<div className="address-form" key={addressFormKey}>
+          <button className="text-back" onClick={()=>{setEditingAddressId(null);setShowAddressForm(false)}}><ArrowLeft/> Volver</button>
           <label>Nombre</label>
           <div className="label-pills">
             {['Casa','Trabajo','Otro'].map(x=><button className={addressLabel===x?'active':''} key={x} onClick={()=>setAddressLabel(x)}>{x}</button>)}
           </div>
           <div className="address-structured-grid">
-            <label className="wide">Calle<input defaultValue="" placeholder="Ej. Benito Juárez" onInput={e=>{streetRef.current=e.currentTarget.value}} autoComplete="address-line1"/></label>
-            <label>Núm. ext.<input defaultValue="" inputMode="text" placeholder="123" onInput={e=>{exteriorRef.current=e.currentTarget.value}}/></label>
-            <label>Núm. int. <small>(si hay)</small><input defaultValue="" placeholder="4B" onInput={e=>{interiorRef.current=e.currentTarget.value}}/></label>
-            <label className="wide">Colonia<input defaultValue="" placeholder="Centro" onInput={e=>{neighborhoodRef.current=e.currentTarget.value}} autoComplete="address-level3"/></label>
+            <label className="wide">Calle<input defaultValue={streetRef.current} placeholder="Ej. Benito Juárez" onInput={e=>{streetRef.current=e.currentTarget.value}} autoComplete="address-line1"/></label>
+            <label>Núm. ext.<input defaultValue={exteriorRef.current} inputMode="text" placeholder="123" onInput={e=>{exteriorRef.current=e.currentTarget.value}}/></label>
+            <label>Núm. int. <small>(si hay)</small><input defaultValue={interiorRef.current} placeholder="4B" onInput={e=>{interiorRef.current=e.currentTarget.value}}/></label>
+            <label className="wide">Colonia<input defaultValue={neighborhoodRef.current} placeholder="Centro" onInput={e=>{neighborhoodRef.current=e.currentTarget.value}} autoComplete="address-level3"/></label>
             <label className="wide">Código postal<input inputMode="numeric" maxLength="5" defaultValue={addressPostalCode} placeholder="93556" onInput={e=>{const v=e.currentTarget.value.replace(/\D/g,'').slice(0,5);e.currentTarget.value=v;addressPostalRef.current=v}} autoComplete="postal-code"/></label>
           </div>
           <div className="pin-map-head"><div><b>Marca la entrada exacta</b><small>Mueve el pin hasta tu casa o entrada.</small></div><button onClick={useMyLocation} disabled={locationBusy}><LocateFixed/>{locationBusy?'Buscando...':'Usar mi ubicación'}</button></div>
           <AddressPinMap lat={addressLat} lng={addressLng} onChange={(lat,lng)=>{addressLatRef.current=lat;addressLngRef.current=lng;setAddressLat(lat);setAddressLng(lng);setAddressPinConfirmed(true)}}/>
           <div className="pin-coordinates"><Crosshair/><span>{Number(addressLat).toFixed(6)}, {Number(addressLng).toFixed(6)}</span></div>
-          <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':'Guardar dirección y pin'}</button>
+          <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':editingAddressId?'Guardar cambios':'Guardar dirección y pin'}</button>
         </div>}
       </section>
     </div>
