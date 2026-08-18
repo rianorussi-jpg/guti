@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V382_NEGOCIO='3.8.2'
+const GUTI_BUILD_V390_NEGOCIO='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, ReceiptText, PackageSearch, Store, Clock3, Settings, LogOut,
@@ -86,6 +86,8 @@ export default function Page(){
   const [sidebarOpen,setSidebarOpen]=useState(false)
 
   useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
+  useEffect(()=>{try{const x=localStorage.getItem('guti-negocio-tab-v39');if(x)setTab(x)}catch{}},[])
+  useEffect(()=>{try{localStorage.setItem('guti-negocio-tab-v39',tab)}catch{}},[tab])
   useEffect(()=>{const h=e=>{e.preventDefault();window.__gutiBusinessInstallPrompt=e};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[])
 
   useEffect(()=>{
@@ -188,6 +190,14 @@ export default function Page(){
       if(e){await e.prompt();window.__gutiBusinessInstallPrompt=null;setMsg('Guti Negocios listo para instalarse.')}
       else setMsg('En iPhone usa Compartir → Agregar a pantalla de inicio. En Android usa Instalar app.')
     }catch{}
+  }
+
+  async function downloadSettlement(s){
+    const {data,error}=await supabase.from('weekly_settlement_orders').select('amount,orders(id,created_at,total,payment_method)').eq('settlement_id',s.id)
+    if(error)return setMsg(error.message)
+    const rows=[['Pedido','Fecha','Método','Total pedido','Neto negocio'],...(data||[]).map(x=>[x.orders?.id||'',new Date(x.orders?.created_at).toLocaleString('es-MX'),x.orders?.payment_method||'',x.orders?.total||0,x.amount||0])]
+    const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n')
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download=`guti-negocio-liquidacion-${s.week_start}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
 
   async function loadNotifications(uid){
@@ -864,7 +874,7 @@ export default function Page(){
           <section className="panel">
             <div className="panel-head"><div><small>HISTORIAL</small><h3>Liquidaciones</h3></div></div>
             <div className="settlement-list">
-              {settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} pedidos · {s.bank_name||'Banco sin registrar'} · {s.bank_clabe?`•••• ${s.bank_clabe.slice(-4)}`:'Sin CLABE'}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={`settlement-status ${s.status}`}>{s.status==='paid'?'Pagado':'Pendiente'}</span></article>)}
+              {settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} pedidos · {s.bank_name||'Banco sin registrar'} · {s.bank_clabe?`•••• ${s.bank_clabe.slice(-4)}`:'Sin CLABE'}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={`settlement-status ${s.status}`}>{s.status==='paid'?'Pagado':'Pendiente'}</span><button className="settlement-download-v39" onClick={()=>downloadSettlement(s)}>Descargar detalle</button></article>)}
               {!settlements.length&&<Empty icon={Wallet} title="Aún no hay liquidaciones" text="Al cerrar tu primera semana aparecerá aquí el pago correspondiente."/>}
             </div>
           </section>

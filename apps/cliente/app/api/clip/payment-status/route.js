@@ -51,7 +51,7 @@ export async function GET(request){
     const {data:order,error:orderError}=await admin.from('orders').insert({
       customer_id:user.id,merchant_id:snapshot.merchant_id,address_id:snapshot.address_id,status:'pending',
       delivery_mode:snapshot.merchant_delivery_mode||'guti',subtotal:Number(snapshot.subtotal),
-      delivery_fee:45,discount:0,total:Number(snapshot.total),payment_method:'card',payment_status:'paid',notes:snapshot.notes||''
+      delivery_fee:45,discount:0,total:Number(snapshot.total),payment_method:'card',payment_status:'paid',notes:snapshot.notes||'',idempotency_key:payment.client_request_id||null,delivery_pin:snapshot.delivery_pin||null
     }).select().single()
     if(orderError)return fail('Pago aprobado, pero no pudimos crear el pedido. Contacta a soporte Guti.',500,{clip_payment_id:paymentId})
 
@@ -63,6 +63,7 @@ export async function GET(request){
       last4:clip?.payment_method?.card?.last_digits||null,brand:clip?.payment_method?.id||null,
       paid_at:clip?.approved_at||new Date().toISOString(),raw_response:{...(payment.raw_response||{}),clip}
     }).eq('id',payment.id)
+    if(payment.client_request_id)await admin.from('payment_attempt_locks').update({state:'paid',provider_payment_id:paymentId,order_id:order.id,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',payment.client_request_id)
 
     return NextResponse.json({ok:true,status:'paid',order_id:order.id})
   }catch(error){

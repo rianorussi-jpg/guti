@@ -1,12 +1,12 @@
 'use client'
-const GUTI_BUILD_V385_CLIENT='3.8.5'
+const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
   Headphones, Smartphone, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
   IceCreamBowl, Grid2X2, Store, Star, Clock3, ArrowRight, ArrowLeft,
   Plus, Minus, Trash2, X, WalletCards, Gift, Heart, MapPinned, LogOut,
-  ChevronRight, LocateFixed, Check, Navigation, BadgePercent
+  ChevronRight, LocateFixed, Check, Navigation, BadgePercent, Crosshair, Share2, ShieldCheck
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
@@ -91,6 +91,11 @@ export default function Page(){
   const [addressBusy,setAddressBusy]=useState(false)
   const addressTextRef=useRef('')
   const addressNotesRef=useRef('')
+  const [addressPostalCode,setAddressPostalCode]=useState('')
+  const [addressLat,setAddressLat]=useState(20.4477)
+  const [addressLng,setAddressLng]=useState(-97.0854)
+  const [locationBusy,setLocationBusy]=useState(false)
+  const addressPostalRef=useRef('')
 
   const [checkoutNotes,setCheckoutNotes]=useState('')
   const [checkoutMerchantId,setCheckoutMerchantId]=useState(null)
@@ -107,6 +112,7 @@ export default function Page(){
   const [checkoutQuote,setCheckoutQuote]=useState(null)
   const [pointsToUse,setPointsToUse]=useState(0)
   const [referralInput,setReferralInput]=useState('')
+  const [checkoutIdempotencyKey,setCheckoutIdempotencyKey]=useState('')
 
   useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
   useEffect(()=>{const h=e=>{e.preventDefault();window.__gutiInstallPrompt=e};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[])
@@ -118,6 +124,21 @@ export default function Page(){
     loadMerchants()
     return ()=>sub.subscription.unsubscribe()
   },[])
+
+  useEffect(()=>{
+    try{
+      const saved=JSON.parse(localStorage.getItem('guti-client-location-v39')||'{}')
+      if(saved.tab)setTab(saved.tab)
+      if(saved.trackingOrderId){setTrackingOrderId(saved.trackingOrderId);setShowTracking(!!saved.showTracking)}
+      if(saved.showCart)setShowCart(true)
+      if(saved.checkoutMerchantId){setCheckoutMerchantId(saved.checkoutMerchantId);setCheckoutStep(saved.checkoutStep||1);setShowCheckout(!!saved.showCheckout)}
+      if(saved.checkoutIdempotencyKey)setCheckoutIdempotencyKey(saved.checkoutIdempotencyKey)
+      window.__gutiRestoreMerchantId=saved.selectedMerchantId||null
+    }catch{}
+  },[])
+  useEffect(()=>{
+    try{localStorage.setItem('guti-client-location-v39',JSON.stringify({tab,trackingOrderId,showTracking,showCart,showCheckout,checkoutStep,checkoutMerchantId,checkoutIdempotencyKey,selectedMerchantId:selectedMerchant?.id||null}))}catch{}
+  },[tab,trackingOrderId,showTracking,showCart,showCheckout,checkoutStep,checkoutMerchantId,checkoutIdempotencyKey,selectedMerchant?.id])
 
   useEffect(()=>{
     if(!session?.user?.id)return
@@ -335,7 +356,10 @@ export default function Page(){
   async function loadMerchants(){
     const {data,error}=await supabase.from('merchants').select('*').eq('is_active',true).order('name')
     if(error)return setMessage(error.message)
-    setMerchants(data||[])
+    const rows=data||[]
+    setMerchants(rows)
+    const restoreId=typeof window!=='undefined'?window.__gutiRestoreMerchantId:null
+    if(restoreId){const m=rows.find(x=>x.id===restoreId);window.__gutiRestoreMerchantId=null;if(m)openMerchant(m)}
   }
 
   async function loadActiveOrders(uid){
@@ -517,11 +541,21 @@ export default function Page(){
     await supabase.auth.signOut()
   }
 
+  function useMyLocation(){
+    if(!navigator.geolocation)return showProfileToast('Este dispositivo no permite obtener ubicación.')
+    setLocationBusy(true)
+    navigator.geolocation.getCurrentPosition(pos=>{
+      setAddressLat(pos.coords.latitude);setAddressLng(pos.coords.longitude);setLocationBusy(false);showProfileToast('Ubicación detectada. Ajusta el pin si hace falta.')
+    },()=>{setLocationBusy(false);showProfileToast('No pudimos obtener tu ubicación. Puedes mover el pin manualmente.')},{enableHighAccuracy:true,timeout:12000})
+  }
+
   async function saveAddress(){
     if(!session){setShowAddressPicker(false);setShowAuth(true);return}
     const typedAddress=String(addressTextRef.current||addressText||'').trim()
     const typedNotes=String(addressNotesRef.current||addressNotes||'').trim()
+    const typedPostal=String(addressPostalRef.current||addressPostalCode||'').replace(/\D/g,'').slice(0,5)
     if(!typedAddress)return showProfileToast('Escribe tu dirección.')
+    if(typedPostal.length!==5)return showProfileToast('Escribe un código postal de 5 dígitos.')
     setAddressBusy(true);setMessage('')
     const makeDefault=addresses.length===0
     const {data,error}=await supabase.from('addresses').insert({
@@ -529,15 +563,16 @@ export default function Page(){
       label:addressLabel.trim()||'Casa',
       formatted_address:typedAddress,
       instructions:typedNotes,
-      lat:20.45,lng:-97.08,
+      postal_code:typedPostal,
+      lat:Number(addressLat),lng:Number(addressLng),pin_confirmed:true,
       is_default:makeDefault
     }).select().single()
     setAddressBusy(false)
     if(error)return showProfileToast(error.message)
     await loadAddresses(session.user.id)
     setSelectedAddressId(data.id)
-    addressTextRef.current='';addressNotesRef.current=''
-    setAddressText('');setAddressNotes('');setAddressLabel('Casa')
+    addressTextRef.current='';addressNotesRef.current='';addressPostalRef.current=''
+    setAddressText('');setAddressNotes('');setAddressPostalCode('');setAddressLabel('Casa')
     setShowAddressForm(false);setShowAddressPicker(false)
     showProfileToast('Dirección guardada.')
   }
@@ -566,6 +601,7 @@ export default function Page(){
     const group=cartGroups.find(g=>g.merchantId===merchantId)
     if(!group||!group.items.length)return
     setCheckoutMerchantId(merchantId)
+    setCheckoutIdempotencyKey(globalThis.crypto?.randomUUID?.()||`guti-${Date.now()}-${Math.random().toString(16).slice(2)}`)
     setCheckoutStep(selectedAddress?2:1)
     setPaymentMethod('cash')
     setShowCart(false)
@@ -583,6 +619,9 @@ export default function Page(){
       address_label:selectedAddress.label||'Dirección',
       address_text:selectedAddress.formatted_address||'',
       notes:checkoutNotes,
+      idempotency_key:checkoutIdempotencyKey||globalThis.crypto?.randomUUID?.()||`guti-${Date.now()}`,
+      coupon_code:couponCode||null,
+      points_requested:Number(pointsToUse||0),
       subtotal:group.subtotal,
       delivery_fee:45,
       total:group.total,
@@ -635,6 +674,7 @@ export default function Page(){
           coupon_code:couponCode||null,
           points_requested:Number(pointsToUse||0),
           customer_phone:profile?.phone||'',
+          idempotency_key:checkoutIdempotencyKey||globalThis.crypto?.randomUUID?.()||`guti-${Date.now()}`,
           items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[]}))
         })
       })
@@ -647,24 +687,22 @@ export default function Page(){
         return
       }
       setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
-      setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setShowCheckout(false)
+      setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setCheckoutIdempotencyKey('');setShowCheckout(false)
       setCardToken(null);setCardReady(false)
       await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
       setTrackingOrderId(result.order_id);setTab('home');setShowTracking(true)
       return
     }
 
-    const {data:order,error:oerr}=await supabase.from('orders').insert({
-      customer_id:session.user.id,merchant_id:merchantId,address_id:selectedAddress.id,status:'pending',
-      delivery_mode:merchant?.delivery_mode||'guti',subtotal:group.subtotal,delivery_fee:45,discount:0,total:finalTotal,
-      coupon_code:couponCode||null,points_used:Number(pointsToUse||0),
-      payment_method:paymentMethod,payment_status:'pending',notes:checkoutNotes
-    }).select().single()
+    const idem=checkoutIdempotencyKey||globalThis.crypto?.randomUUID?.()||`guti-${Date.now()}`
+    const {data:orderId,error:oerr}=await supabase.rpc('create_order_v39',{
+      p_merchant_id:merchantId,p_address_id:selectedAddress.id,p_payment_method:paymentMethod,p_notes:checkoutNotes,
+      p_coupon_code:couponCode||null,p_points_requested:Number(pointsToUse||0),p_idempotency_key:idem,
+      p_items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[]}))
+    })
     if(oerr){setCheckoutBusy(false);setMessage(oerr.message);return}
-    const items=group.items.map(x=>({order_id:order.id,product_id:x.id,product_name:x.name,unit_price:Number(x.price),quantity:x.qty,line_total:Number(x.price)*x.qty,selected_options:x.selected_options||[]}))
-    const {error:ierr}=await supabase.from('order_items').insert(items)
-    if(ierr){setCheckoutBusy(false);setMessage(ierr.message);return}
-    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setShowCheckout(false);setCheckoutBusy(false)
+    const order={id:orderId}
+    setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setCheckoutIdempotencyKey('');setShowCheckout(false);setCheckoutBusy(false)
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
     setTrackingOrderId(order.id);setTab('home');setShowTracking(true)
   }
@@ -730,7 +768,7 @@ export default function Page(){
             {addresses.map(a=><article className={`address-choice ${selectedAddressId===a.id?'selected':''}`} key={a.id}>
               <button className="address-main" onClick={()=>{setSelectedAddressId(a.id);setShowAddressPicker(false)}}>
                 <span className="address-icon"><MapPin/></span>
-                <span><b>{a.label||'Dirección'}</b><small>{a.formatted_address}</small>{a.instructions&&<em>{a.instructions}</em>}</span>
+                <span><b>{a.label||'Dirección'}</b><small>{a.formatted_address}</small>{a.postal_code&&<small>CP {a.postal_code}</small>}{a.instructions&&<em>{a.instructions}</em>}</span>
                 {selectedAddressId===a.id&&<Check className="address-check"/>}
               </button>
               <div className="address-actions">
@@ -739,7 +777,7 @@ export default function Page(){
               </div>
             </article>)}
           </div>
-          <button className="add-address-btn" onClick={()=>{addressTextRef.current=addressText;addressNotesRef.current=addressNotes;setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
+          <button className="add-address-btn" onClick={()=>{addressTextRef.current=addressText;addressNotesRef.current=addressNotes;addressPostalRef.current=addressPostalCode;setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
         </>}
 
         {session&&showAddressForm&&<div className="address-form">
@@ -756,14 +794,14 @@ export default function Page(){
             onInput={e=>{addressTextRef.current=e.currentTarget.value}}
             autoComplete="street-address"
           />
+          <label>Código postal</label>
+          <input inputMode="numeric" maxLength="5" defaultValue={addressPostalCode} placeholder="Ej. 93556" onInput={e=>{const v=e.currentTarget.value.replace(/\D/g,'').slice(0,5);e.currentTarget.value=v;addressPostalRef.current=v}}/>
           <label>Referencias</label>
-          <textarea
-            rows="2"
-            defaultValue={addressNotes}
-            placeholder="Casa color azul, portón negro..."
-            onInput={e=>{addressNotesRef.current=e.currentTarget.value}}
-          />
-          <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':'Guardar dirección'}</button>
+          <textarea rows="2" defaultValue={addressNotes} placeholder="Casa color azul, portón negro..." onInput={e=>{addressNotesRef.current=e.currentTarget.value}}/>
+          <div className="pin-map-head"><div><b>Marca la entrada exacta</b><small>Mueve el pin hasta tu casa o entrada.</small></div><button onClick={useMyLocation} disabled={locationBusy}><LocateFixed/>{locationBusy?'Buscando...':'Usar mi ubicación'}</button></div>
+          <AddressPinMap lat={addressLat} lng={addressLng} onChange={(lat,lng)=>{setAddressLat(lat);setAddressLng(lng)}}/>
+          <div className="pin-coordinates"><Crosshair/><span>{Number(addressLat).toFixed(6)}, {Number(addressLng).toFixed(6)}</span></div>
+          <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':'Guardar dirección y pin'}</button>
         </div>}
       </section>
     </div>
@@ -998,6 +1036,15 @@ export default function Page(){
     </div>
   }
 
+  async function cancelTrackedOrder(order){
+    if(!order||order.status!=='pending')return
+    if(!confirm('¿Cancelar este pedido? Solo es posible antes de que el negocio lo acepte.'))return
+    const {error}=await supabase.rpc('cancel_customer_order_v39',{p_order_id:order.id})
+    if(error)return showProfileToast(error.message,5000)
+    showProfileToast(order.payment_method==='card'?'Pedido cancelado. Si ya se cobró la tarjeta, soporte revisará el reembolso.':'Pedido cancelado.',5000)
+    setShowTracking(false);await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
+  }
+
   function CurrentOrderView(){
     const order=activeOrder
     if(!order&&!deliveredSuccess)return null
@@ -1011,6 +1058,7 @@ export default function Page(){
           <p>Gracias por pedir con Guti.mx. Esperamos que lo disfrutes.</p>
           <div className="tracking-summary"><div><span>Pedido</span><b>#{delivered.id?.slice(0,8)}</b></div><div><span>Total</span><b>${Number(delivered.total||0).toFixed(2)}</b></div></div>
           <button className="primary-wide" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
+          <button className="support-tracking-btn" onClick={openSupport}><Headphones/>Soporte Guti</button>
         </section>
       </main>
     }
@@ -1042,7 +1090,12 @@ export default function Page(){
           <div><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
           <div><span>Estado</span><b className="green">{statusLabel(order.status)}</b></div>
         </div>
-        <button className="secondary-wide" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
+        {order.payment_method==='card'&&order.delivery_pin&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
+        <div className="tracking-actions-v39">
+          <button className="secondary-wide" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
+          <button className="support-tracking-btn" onClick={openSupport}><Headphones/>Soporte</button>
+          {order.status==='pending'&&<button className="cancel-order-v39" onClick={()=>cancelTrackedOrder(order)}>Cancelar pedido</button>}
+        </div>
       </section>
     </main>
   }
@@ -1388,6 +1441,34 @@ export default function Page(){
     {profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')} aria-label="Cerrar"><X/></button></div>}
     {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{SupportModal()}{AuthModal()}{AddressModal()}
   </main>
+}
+
+
+function AddressPinMap({lat,lng,onChange}){
+  const mapEl=useRef(null), mapRef=useRef(null), markerRef=useRef(null)
+  useEffect(()=>{
+    let cancelled=false
+    async function boot(){
+      if(!document.querySelector('link[data-leaflet-guti]')){const l=document.createElement('link');l.rel='stylesheet';l.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';l.dataset.leafletGuti='1';document.head.appendChild(l)}
+      if(!window.L){await new Promise((resolve,reject)=>{const old=document.querySelector('script[data-leaflet-guti]');if(old){old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return}const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.dataset.leafletGuti='1';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)})}
+      if(cancelled||!mapEl.current||!window.L)return
+      const L=window.L
+      if(!mapRef.current){
+        const map=L.map(mapEl.current,{zoomControl:true}).setView([lat,lng],17)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map)
+        const marker=L.marker([lat,lng],{draggable:true}).addTo(map)
+        marker.on('dragend',()=>{const p=marker.getLatLng();onChange?.(p.lat,p.lng)})
+        map.on('click',e=>{marker.setLatLng(e.latlng);onChange?.(e.latlng.lat,e.latlng.lng)})
+        mapRef.current=map;markerRef.current=marker
+        setTimeout(()=>map.invalidateSize(),60)
+      }
+    }
+    boot().catch(console.error)
+    return()=>{cancelled=true}
+  },[])
+  useEffect(()=>{if(mapRef.current&&markerRef.current){markerRef.current.setLatLng([lat,lng]);mapRef.current.panTo([lat,lng])}},[lat,lng])
+  useEffect(()=>()=>{try{mapRef.current?.remove()}catch{};mapRef.current=null;markerRef.current=null},[])
+  return <div ref={mapEl} className="address-pin-map-v39"/>
 }
 
 

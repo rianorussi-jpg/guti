@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V382_REPARTIDOR='3.8.2'
+const GUTI_BUILD_V390_REPARTIDOR='3.9.0'
 import { useEffect,useMemo,useState } from 'react'
 import {
   Bike,LogOut,MapPin,Phone,Navigation,Clock3,PackageCheck,CheckCircle2,
@@ -36,8 +36,11 @@ export default function Page(){
   const [depositAmount,setDepositAmount]=useState('')
   const [depositReference,setDepositReference]=useState('')
   const [deliveryConfirm,setDeliveryConfirm]=useState(null)
+  const [deliveryPin,setDeliveryPin]=useState('')
 
   useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
+  useEffect(()=>{try{const x=localStorage.getItem('guti-courier-tab-v39');if(x)setTab(x)}catch{}},[])
+  useEffect(()=>{try{localStorage.setItem('guti-courier-tab-v39',tab)}catch{}},[tab])
   useEffect(()=>{const h=e=>{e.preventDefault();window.__gutiCourierInstallPrompt=e};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[])
 
   useEffect(()=>{
@@ -109,6 +112,14 @@ export default function Page(){
     await load(session.user.id)
   }
 
+  async function downloadSettlement(s){
+    const {data,error}=await supabase.from('weekly_settlement_orders').select('amount,orders(id,created_at,total,payment_method,merchants(name))').eq('settlement_id',s.id)
+    if(error)return setMsg(error.message)
+    const rows=[['Pedido','Fecha','Negocio','Método','Total pedido','Tu pago'],...(data||[]).map(x=>[x.orders?.id||'',new Date(x.orders?.created_at).toLocaleString('es-MX'),x.orders?.merchants?.name||'',x.orders?.payment_method||'',x.orders?.total||0,x.amount||0])]
+    const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n')
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download=`guti-liquidacion-${s.week_start}.csv`;a.click();URL.revokeObjectURL(a.href)
+  }
+
   async function login(e){
     e.preventDefault();setBusy(true);setMsg('')
     const {error}=await supabase.auth.signInWithPassword({email,password})
@@ -121,7 +132,7 @@ export default function Page(){
       supabase.from('profiles').select('full_name,phone').eq('id',uid).maybeSingle(),
       supabase.rpc('get_available_orders_v37'),
       supabase.from('orders')
-        .select('*,merchants(name,address,phone),addresses(formatted_address,instructions),profiles!orders_customer_id_fkey(full_name,phone)')
+        .select('*,merchants(name,address,phone),addresses(formatted_address,instructions,postal_code,lat,lng),profiles!orders_customer_id_fkey(full_name,phone)')
         .eq('courier_id',uid).in('status',['assigned','picked_up','on_the_way'])
         .order('created_at',{ascending:false}),
       supabase.from('orders')
@@ -149,7 +160,7 @@ export default function Page(){
   async function claim(id){
     if(hasActive)return setMsg('Termina tu entrega activa antes de tomar otro pedido.')
     setBusy(true);setMsg('')
-    const {error}=await supabase.rpc('claim_order_v34',{p_order_id:id})
+    const {error}=await supabase.rpc('claim_order_v39',{p_order_id:id})
     setBusy(false)
     if(error)setMsg(error.message);else await load(session.user.id)
   }
@@ -171,13 +182,10 @@ export default function Page(){
   async function completeDelivery(order){
     setBusy(true);setMsg('')
     const due=amountDue(order)
-    const {error}=await supabase.rpc('courier_complete_delivery_v37',{
-      p_order_id:order.id,
-      p_cash_collected:order.payment_method==='cash'?Math.max(0,due):0
-    })
+    const {error}=await supabase.rpc('courier_complete_delivery_v39',{p_order_id:order.id,p_cash_collected:order.payment_method==='cash'?Math.max(0,due):0,p_delivery_pin:order.payment_method==='card'?deliveryPin:null})
     setBusy(false)
     if(error)return setMsg(error.message)
-    setDeliveryConfirm(null)
+    setDeliveryConfirm(null);setDeliveryPin('')
     setMsg(order.payment_method==='cash'?'Entrega completada y cobro registrado.':'Entrega completada.')
     await load(session.user.id)
   }
@@ -193,8 +201,9 @@ export default function Page(){
   const todayTrips=history.filter(o=>new Date(o.delivered_at||o.created_at)>=startToday).length
   const weekTrips=history.filter(o=>new Date(o.delivered_at||o.created_at)>=startWeek).length
 
-  const googleUrl=address=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address||'Gutiérrez Zamora, Veracruz')}`
-  const wazeUrl=address=>`https://www.waze.com/ul?q=${encodeURIComponent(address||'Gutiérrez Zamora, Veracruz')}&navigate=yes`
+  const navTarget=o=>o?.addresses?.lat&&o?.addresses?.lng?`${o.addresses.lat},${o.addresses.lng}`:(o?.addresses?.formatted_address||'Gutiérrez Zamora, Veracruz')
+  const googleUrl=o=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navTarget(o))}`
+  const wazeUrl=o=>o?.addresses?.lat&&o?.addresses?.lng?`https://www.waze.com/ul?ll=${o.addresses.lat}%2C${o.addresses.lng}&navigate=yes`:`https://www.waze.com/ul?q=${encodeURIComponent(navTarget(o))}&navigate=yes`
 
   if(!session)return <main className="courier-login">
     <section className="courier-login-card">
@@ -247,7 +256,7 @@ export default function Page(){
             <div className="active-route">
               <div><span className="route-dot store"/><div><small>RECOGER EN</small><b>{active.merchants?.name}</b><p>{active.merchants?.address||'Dirección del negocio'}</p></div></div>
               <span className="route-line"/>
-              <div><span className="route-dot customer"/><div><small>ENTREGAR A</small><b>{active.profiles?.full_name||'Cliente Guti'}</b><p>{active.addresses?.formatted_address}</p>{active.addresses?.instructions&&<em>{active.addresses.instructions}</em>}</div></div>
+              <div><span className="route-dot customer"/><div><small>ENTREGAR A</small><b>{active.profiles?.full_name||'Cliente Guti'}</b><p>{active.addresses?.formatted_address}</p>{active.addresses?.postal_code&&<small>CP {active.addresses.postal_code}</small>}{active.addresses?.instructions&&<em>{active.addresses.instructions}</em>}</div></div>
             </div>
 
             <div className="customer-contact">
@@ -267,8 +276,8 @@ export default function Page(){
             </div>}
 
             <div className="map-actions">
-              <a target="_blank" rel="noreferrer" href={googleUrl(active.status==='assigned'?(active.merchants?.address||active.addresses?.formatted_address):active.addresses?.formatted_address)}><Map/>Google Maps</a>
-              <a target="_blank" rel="noreferrer" href={wazeUrl(active.status==='assigned'?(active.merchants?.address||active.addresses?.formatted_address):active.addresses?.formatted_address)}><Navigation/>Waze</a>
+              <a target="_blank" rel="noreferrer" href={active.status==='assigned'?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(active.merchants?.address||'Gutiérrez Zamora, Veracruz')}`:googleUrl(active)}><Map/>Google Maps</a>
+              <a target="_blank" rel="noreferrer" href={active.status==='assigned'?`https://www.waze.com/ul?q=${encodeURIComponent(active.merchants?.address||'Gutiérrez Zamora, Veracruz')}&navigate=yes`:wazeUrl(active)}><Navigation/>Waze</a>
             </div>
 
             <div className="delivery-main-action">
@@ -286,7 +295,7 @@ export default function Page(){
           :<div className="available-list">{jobs.map(j=><article key={j.id}>
             <div className="available-store"><span><Store/></span><div><small>RECOGER</small><b>{j.merchant_name}</b><p>{j.merchant_address||'Gutiérrez Zamora'}</p></div><strong>${j.earning.toFixed(2)}</strong></div>
             <div className="available-destination"><MapPin/><span>{j.delivery_address}</span></div>
-<button disabled={hasActive||busy} onClick={()=>claim(j.id)}>{hasActive?'Termina tu entrega para tomarlo':'Tomar pedido'}<ChevronRight/></button>
+<button disabled={hasActive||busy||cashDays.reduce((sum,d)=>sum+Number(d.amount_due||0),0)>=500} onClick={()=>claim(j.id)}>{cashDays.reduce((sum,d)=>sum+Number(d.amount_due||0),0)>=500?'Deposita efectivo para continuar':hasActive?'Termina tu entrega para tomarlo':'Tomar pedido'}<ChevronRight/></button>
           </article>)}</div>}
         </section>
       </>}
@@ -318,7 +327,7 @@ export default function Page(){
         <section className="courier-section">
           <div className="courier-section-head"><div><small>CADA LUNES</small><h2>Liquidaciones</h2></div></div>
           <div className="settlement-courier-list">
-            {settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} entregas no efectivo · {s.bank_name||'Banco sin registrar'} {s.bank_clabe?`••••${s.bank_clabe.slice(-4)}`:''}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={s.status}>{s.status==='paid'?'Pagado':'Pendiente'}</span></article>)}
+            {settlements.map(s=><article key={s.id}><div><b>{new Date(s.week_start+'T12:00:00').toLocaleDateString('es-MX')} – {new Date(s.week_end+'T12:00:00').toLocaleDateString('es-MX')}</b><small>{s.order_count} entregas no efectivo · {s.bank_name||'Banco sin registrar'} {s.bank_clabe?`••••${s.bank_clabe.slice(-4)}`:''}</small></div><strong>${Number(s.amount).toFixed(2)}</strong><span className={s.status}>{s.status==='paid'?'Pagado':'Pendiente'}</span><button className="settlement-download-v39" onClick={()=>downloadSettlement(s)}>Descargar detalle</button></article>)}
             {!settlements.length&&<div className="courier-empty"><CalendarDays/><b>Aún no hay liquidaciones</b><span>Cuando cierre una semana aparecerá aquí tu pago del lunes.</span></div>}
           </div>
         </section>
@@ -354,9 +363,10 @@ export default function Page(){
           <div><span>Tu ganancia de reparto</span><b>$35.00</b></div>
           {deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'&&<div className="deposit-after"><span>Después depositarás a Guti</span><b>${Math.max(0,Number(deliveryConfirm.total||0)-35).toFixed(2)}</b></div>}
         </div>
+        {deliveryConfirm.payment_method==='card'&&deliveryConfirm.payment_status==='paid'&&<div className="delivery-pin-courier-v39"><label>PIN de 4 dígitos del cliente</label><input inputMode="numeric" maxLength="4" value={deliveryPin} onChange={e=>setDeliveryPin(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="0000"/><small>Pídeselo al cliente cuando ya estés frente a él.</small></div>}
         {deliveryConfirm.payment_method!=='cash'&&deliveryConfirm.payment_status!=='paid'
           ? <div className="payment-blocked"><AlertCircle/><div><b>Pago todavía no confirmado</b><span>No entregues el pedido. Contacta a Guti para revisar el pago.</span></div></div>
-          : <button className="delivery-confirm-final" disabled={busy} onClick={()=>completeDelivery(deliveryConfirm)}>{busy?'Confirmando...':deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'?`Sí, cobré $${amountDue(deliveryConfirm).toFixed(2)} y entregué`:'Confirmar pedido entregado'}</button>}
+          : <button className="delivery-confirm-final" disabled={busy||(deliveryConfirm.payment_method==='card'&&deliveryPin.length!==4)} onClick={()=>completeDelivery(deliveryConfirm)}>{busy?'Confirmando...':deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'?`Sí, cobré $${amountDue(deliveryConfirm).toFixed(2)} y entregué`:'Confirmar pedido entregado'}</button>}
       </section>
     </div>}
 

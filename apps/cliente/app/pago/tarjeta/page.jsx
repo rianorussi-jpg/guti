@@ -150,6 +150,9 @@ export default function CardPaymentPage(){
           merchant_id:checkout.merchant_id,
           address_id:checkout.address_id,
           notes:checkout.notes||'',
+          idempotency_key:checkout.idempotency_key,
+          coupon_code:checkout.coupon_code||null,
+          points_requested:Number(checkout.points_requested||0),
           items:checkout.items.map(x=>({
             product_id:x.product_id,
             quantity:x.quantity,

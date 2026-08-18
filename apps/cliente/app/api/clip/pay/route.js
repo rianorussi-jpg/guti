@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -29,8 +30,9 @@ export async function POST(request){
     const merchantId=String(body.merchant_id||'')
     const addressId=String(body.address_id||'')
     const customerPhone=String(body.customer_phone||'').replace(/\D/g,'')
+    const requestId=String(body.idempotency_key||'').trim()
     const requestedItems=Array.isArray(body.items)?body.items:[]
-    if(!cardToken||!merchantId||!addressId||!requestedItems.length)return fail('Faltan datos para procesar el pago.')
+    if(!cardToken||!merchantId||!addressId||!requestedItems.length||!requestId)return fail('Faltan datos para procesar el pago.')
     if(customerPhone.length!==10)return fail('Clip requiere un número celular de 10 dígitos.')
 
     const {data:address}=await admin.from('addresses').select('id').eq('id',addressId).eq('user_id',user.id).maybeSingle()
@@ -98,6 +100,18 @@ export async function POST(request){
     const quote=Array.isArray(quoteData)?quoteData[0]:quoteData
     const deliveryFee=Number(quote?.delivery_fee??DELIVERY_FEE)
     const total=Number(quote?.total??Math.round((subtotal+DELIVERY_FEE)*100)/100)
+    const deliveryPin=String(randomInt(1000,10000))
+
+    const {data:existingRequest}=await admin.from('payment_attempt_locks').select('*').eq('user_id',user.id).eq('request_id',requestId).maybeSingle()
+    if(existingRequest?.order_id)return NextResponse.json({ok:true,status:'paid',order_id:existingRequest.order_id,payment_id:existingRequest.provider_payment_id,amount:total,idempotent:true})
+    if(existingRequest?.state==='failed')await admin.from('payment_attempt_locks').delete().eq('user_id',user.id).eq('request_id',requestId)
+    else if(existingRequest?.state==='pending'&&existingRequest.provider_payment_id){
+      const {data:pendingPayment}=await admin.from('payments').select('raw_response').eq('user_id',user.id).eq('client_request_id',requestId).maybeSingle()
+      return NextResponse.json({ok:false,message:'Tu banco necesita autenticación 3DS.',clip_status:'pending',clip_payment_id:existingRequest.provider_payment_id,pending_action:pendingPayment?.raw_response?.clip?.pending_action||null},{status:202})
+    }
+    else if(existingRequest)return fail('Este pago ya se está procesando. Espera antes de volver a intentar.',409,{code:'GUTI_DUPLICATE_PAYMENT',clip_payment_id:existingRequest.provider_payment_id||null})
+    const {error:reserveError}=await admin.from('payment_attempt_locks').insert({user_id:user.id,request_id:requestId,state:'processing'})
+    if(reserveError){const {data:x}=await admin.from('payment_attempt_locks').select('*').eq('user_id',user.id).eq('request_id',requestId).maybeSingle();if(x?.order_id)return NextResponse.json({ok:true,status:'paid',order_id:x.order_id,payment_id:x.provider_payment_id,amount:total,idempotent:true});return fail('Este pago ya se está procesando.',409,{code:'GUTI_DUPLICATE_PAYMENT'})}
 
     const clipRes=await fetch('https://api.payclip.com/payments',{
       method:'POST',
@@ -106,7 +120,7 @@ export async function POST(request){
         amount:total,
         currency:'MXN',
         description:`Guti.mx - ${merchant.name}`,
-        external_reference:`guti-${user.id.slice(0,8)}-${Date.now()}`,
+        external_reference:`guti-${requestId.slice(0,48)}`,
         payment_method:{token:cardToken},
         customer:{email:user.email||'',phone:customerPhone},
         prevention_data:{...(body.prevention_data||{}),request_3ds:true},
@@ -118,6 +132,7 @@ export async function POST(request){
     const status=String(clip.status||'').toLowerCase()
 
     if(!clipRes.ok||status==='rejected'||status==='cancelled'){
+      await admin.from('payment_attempt_locks').update({state:'failed',provider_payment_id:clip?.id||null,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',requestId)
       return fail(clip?.status_detail?.message||'Pago rechazado.',402,{clip_status:status,clip_code:clip?.status_detail?.code||null})
     }
 
@@ -134,6 +149,7 @@ export async function POST(request){
         user_id:user.id,
         provider:'clip',
         provider_payment_id:clip.id,
+        client_request_id:requestId,
         amount:total,
         currency:'MXN',
         status:'pending',
@@ -149,7 +165,8 @@ export async function POST(request){
             total,
             coupon_code:couponCode,
             points_requested:Number(quote?.points_used||0),
-            items:normalizedItems
+            items:normalizedItems,
+            delivery_pin:deliveryPin
           }
         }
       }
@@ -159,7 +176,7 @@ export async function POST(request){
         .from('payments')
         .select('id')
         .eq('provider','clip')
-        .eq('provider_payment_id',clip.id)
+        .eq('client_request_id',requestId)
         .maybeSingle()
 
       let persistError=null
@@ -171,6 +188,7 @@ export async function POST(request){
         persistError=error
       }
 
+      if(!persistError)await admin.from('payment_attempt_locks').update({state:'pending',provider_payment_id:clip.id,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',requestId)
       if(persistError){
         console.error('Could not persist pending Clip payment',clip.id,persistError)
         return fail('Clip inició la verificación bancaria, pero Guti no pudo guardar el intento de pago. Intenta nuevamente.',500,{
@@ -188,14 +206,20 @@ export async function POST(request){
       },{status:202})
     }
 
-    if(status==='authorized')return fail('El pago quedó autorizado pero no capturado.',409,{clip_status:status,clip_payment_id:clip.id||null})
+    if(status==='authorized'){await admin.from('payment_attempt_locks').update({state:'authorized',provider_payment_id:clip.id||null,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',requestId);return fail('El pago quedó autorizado pero no capturado.',409,{clip_status:status,clip_payment_id:clip.id||null})}
     if(status!=='approved')return fail('Clip devolvió un estado de pago no reconocido.',409,{clip_status:status})
+
+    const approvedBeforeOrder={order_id:null,user_id:user.id,provider:'clip',provider_payment_id:clip.id||null,client_request_id:requestId,amount:total,currency:'MXN',status:'paid',status_detail:clip?.status_detail?.code||null,last4:clip?.payment_method?.card?.last_digits||null,brand:clip?.payment_method?.id||null,paid_at:clip?.approved_at||new Date().toISOString(),provider_last_status:'approved',provider_checked_at:new Date().toISOString(),raw_response:{clip,guti_checkout:{merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),subtotal,total,coupon_code:couponCode,points_requested:Number(quote?.points_used||0),items:normalizedItems,delivery_pin:deliveryPin}}}
+    const {data:prePayment}=await admin.from('payments').select('id').eq('user_id',user.id).eq('client_request_id',requestId).maybeSingle()
+    const {error:preAuditError}=prePayment?.id?await admin.from('payments').update(approvedBeforeOrder).eq('id',prePayment.id):await admin.from('payments').insert(approvedBeforeOrder)
+    if(preAuditError)console.error('No se pudo guardar conciliación previa de Clip',preAuditError)
+    await admin.from('payment_attempt_locks').update({state:'approved',provider_payment_id:clip.id||null,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',requestId)
 
     const {data:order,error:orderError}=await admin.from('orders').insert({
       customer_id:user.id,merchant_id:merchantId,address_id:addressId,status:'pending',
       delivery_mode:merchant.delivery_mode||'guti',subtotal,delivery_fee:deliveryFee,
       discount:0,total,coupon_code:couponCode,points_used:Number(quote?.points_used||0),
-      payment_method:'card',payment_status:'paid',notes:String(body.notes||'').slice(0,500)
+      payment_method:'card',payment_status:'paid',notes:String(body.notes||'').slice(0,500),idempotency_key:requestId,delivery_pin:deliveryPin
     }).select().single()
     if(orderError)return fail('El pago fue aprobado, pero no pudimos crear el pedido. Contacta a soporte Guti y no vuelvas a pagar.',500,{clip_payment_id:clip.id})
 
@@ -207,6 +231,7 @@ export async function POST(request){
       user_id:user.id,
       provider:'clip',
       provider_payment_id:clip.id||null,
+      client_request_id:requestId,
       amount:total,
       currency:'MXN',
       status:'paid',
@@ -214,7 +239,7 @@ export async function POST(request){
       last4:clip?.payment_method?.card?.last_digits||null,
       brand:clip?.payment_method?.id||null,
       paid_at:clip?.approved_at||new Date().toISOString(),
-      raw_response:{clip}
+      raw_response:{clip,guti_checkout:{merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),subtotal,total,coupon_code:couponCode,points_requested:Number(quote?.points_used||0),items:normalizedItems,delivery_pin:deliveryPin}}
     }
 
     if(clip.id){
@@ -222,7 +247,7 @@ export async function POST(request){
         .from('payments')
         .select('id')
         .eq('provider','clip')
-        .eq('provider_payment_id',clip.id)
+        .eq('client_request_id',requestId)
         .maybeSingle()
 
       const {error:paymentAuditError}=existingPayment?.id
@@ -232,6 +257,7 @@ export async function POST(request){
       if(paymentAuditError)console.error('Could not persist approved Clip payment audit',clip.id,paymentAuditError)
     }
 
+    await admin.from('payment_attempt_locks').update({state:'paid',provider_payment_id:clip.id||null,order_id:order.id,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',requestId)
     return NextResponse.json({ok:true,status:'paid',order_id:order.id,payment_id:clip.id,amount:total})
   }catch(error){
     console.error(error)
