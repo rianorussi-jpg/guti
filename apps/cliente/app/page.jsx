@@ -1,6 +1,6 @@
 'use client'
-const GUTI_BUILD_V384_CLIENT='3.8.4'
-import { useEffect, useMemo, useState } from 'react'
+const GUTI_BUILD_V385_CLIENT='3.8.5'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
   Headphones, Smartphone, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
@@ -89,6 +89,8 @@ export default function Page(){
   const [addressText,setAddressText]=useState('')
   const [addressNotes,setAddressNotes]=useState('')
   const [addressBusy,setAddressBusy]=useState(false)
+  const addressTextRef=useRef('')
+  const addressNotesRef=useRef('')
 
   const [checkoutNotes,setCheckoutNotes]=useState('')
   const [checkoutMerchantId,setCheckoutMerchantId]=useState(null)
@@ -132,10 +134,10 @@ export default function Page(){
     return()=>supabase.removeChannel(channel)
   },[session?.user?.id])
 
-  function showProfileToast(text){
+  function showProfileToast(text,duration=3200){
     setProfileToast(text)
     window.clearTimeout(window.__gutiProfileToastTimer)
-    window.__gutiProfileToastTimer=window.setTimeout(()=>setProfileToast(''),3200)
+    window.__gutiProfileToastTimer=window.setTimeout(()=>setProfileToast(''),duration)
   }
 
   async function installGutiApp(){
@@ -154,12 +156,12 @@ export default function Page(){
       const ua=navigator.userAgent||''
       const isiOS=/iphone|ipad|ipod/i.test(ua)
       if(isiOS){
-        return showProfileToast('En iPhone: abre Compartir en Safari y elige “Agregar a pantalla de inicio”.')
+        return showProfileToast('iPhone: abre Guti en Safari → toca Compartir (el cuadrito con una flecha ↑) → desliza y toca “Agregar a pantalla de inicio” → confirma en “Agregar”.',8000)
       }
 
-      return showProfileToast('Abre el menú del navegador y elige “Instalar app” o “Agregar a pantalla de inicio”.')
+      return showProfileToast('Android: abre Guti en Chrome → toca los 3 puntos ⋮ de arriba → “Agregar a pantalla principal” o “Instalar app” → confirma “Instalar”.',8000)
     }catch{
-      showProfileToast('No se pudo iniciar la instalación. Usa el menú del navegador → Instalar app.')
+      showProfileToast('No se pudo abrir el instalador. iPhone: Safari → Compartir (cuadro con flecha ↑) → Agregar a pantalla de inicio. Android: Chrome → ⋮ → Instalar app.',8000)
     }
   }
 
@@ -517,23 +519,27 @@ export default function Page(){
 
   async function saveAddress(){
     if(!session){setShowAddressPicker(false);setShowAuth(true);return}
-    if(!addressText.trim())return setMessage('Escribe tu dirección.')
+    const typedAddress=String(addressTextRef.current||addressText||'').trim()
+    const typedNotes=String(addressNotesRef.current||addressNotes||'').trim()
+    if(!typedAddress)return showProfileToast('Escribe tu dirección.')
     setAddressBusy(true);setMessage('')
     const makeDefault=addresses.length===0
     const {data,error}=await supabase.from('addresses').insert({
       user_id:session.user.id,
       label:addressLabel.trim()||'Casa',
-      formatted_address:addressText.trim(),
-      instructions:addressNotes.trim(),
+      formatted_address:typedAddress,
+      instructions:typedNotes,
       lat:20.45,lng:-97.08,
       is_default:makeDefault
     }).select().single()
     setAddressBusy(false)
-    if(error)return setMessage(error.message)
+    if(error)return showProfileToast(error.message)
     await loadAddresses(session.user.id)
     setSelectedAddressId(data.id)
+    addressTextRef.current='';addressNotesRef.current=''
     setAddressText('');setAddressNotes('');setAddressLabel('Casa')
     setShowAddressForm(false);setShowAddressPicker(false)
+    showProfileToast('Dirección guardada.')
   }
 
   async function makeDefaultAddress(id){
@@ -733,7 +739,7 @@ export default function Page(){
               </div>
             </article>)}
           </div>
-          <button className="add-address-btn" onClick={()=>setShowAddressForm(true)}><Plus/> Agregar otra dirección</button>
+          <button className="add-address-btn" onClick={()=>{addressTextRef.current=addressText;addressNotesRef.current=addressNotes;setShowAddressForm(true)}}><Plus/> Agregar otra dirección</button>
         </>}
 
         {session&&showAddressForm&&<div className="address-form">
@@ -743,9 +749,20 @@ export default function Page(){
             {['Casa','Trabajo','Otro'].map(x=><button className={addressLabel===x?'active':''} key={x} onClick={()=>setAddressLabel(x)}>{x}</button>)}
           </div>
           <label>Dirección escrita</label>
-          <textarea rows="3" placeholder="Ej. Calle Juárez #123, Centro, a un lado de..." value={addressText} onChange={e=>setAddressText(e.target.value)}/>
+          <textarea
+            rows="3"
+            defaultValue={addressText}
+            placeholder="Ej. Calle Juárez #123, Centro, a un lado de..."
+            onInput={e=>{addressTextRef.current=e.currentTarget.value}}
+            autoComplete="street-address"
+          />
           <label>Referencias</label>
-          <textarea rows="2" placeholder="Casa color azul, portón negro..." value={addressNotes} onChange={e=>setAddressNotes(e.target.value)}/>
+          <textarea
+            rows="2"
+            defaultValue={addressNotes}
+            placeholder="Casa color azul, portón negro..."
+            onInput={e=>{addressNotesRef.current=e.currentTarget.value}}
+          />
           <button className="primary-wide" disabled={addressBusy} onClick={saveAddress}>{addressBusy?'Guardando...':'Guardar dirección'}</button>
         </div>}
       </section>
