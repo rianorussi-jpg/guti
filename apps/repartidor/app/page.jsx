@@ -1,4 +1,5 @@
 'use client'
+const GUTI_BUILD_V410_REPARTIDOR='4.1.0'
 const GUTI_BUILD_V394_REPARTIDOR='3.9.4'
 const GUTI_BUILD_V390_REPARTIDOR='3.9.0'
 import { useEffect,useMemo,useState } from 'react'
@@ -382,8 +383,8 @@ export default function Page(){
         </div>
         <div className="delivery-confirm-summary">
           <div><span>Total del pedido</span><b>${Number(deliveryConfirm.total||0).toFixed(2)}</b></div>
-          <div><span>Tu ganancia de reparto</span><b>$35.00</b></div>
-          {deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'&&<div className="deposit-after"><span>Después depositarás a Guti</span><b>${Math.max(0,Number(deliveryConfirm.total||0)-35).toFixed(2)}</b></div>}
+          <div><span>Tu ganancia total</span><b>${earningOf(deliveryConfirm).toFixed(2)}</b></div>{Number(deliveryConfirm.tip_amount||0)>0&&<div><span>Incluye propina</span><b>+${Number(deliveryConfirm.tip_amount).toFixed(2)}</b></div>}
+          {deliveryConfirm.payment_method==='cash'&&deliveryConfirm.payment_status!=='paid'&&<div className="deposit-after"><span>Después depositarás a Guti</span><b>${Math.max(0,Number(deliveryConfirm.total||0)-earningOf(deliveryConfirm)).toFixed(2)}</b></div>}
         </div>
         {deliveryConfirm.payment_method==='card'&&deliveryConfirm.payment_status==='paid'&&<div className="delivery-pin-courier-v39"><label>PIN de 4 dígitos del cliente</label><input inputMode="numeric" maxLength="4" value={deliveryPin} onChange={e=>setDeliveryPin(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="0000"/><small>Pídeselo al cliente cuando ya estés frente a él.</small></div>}
         {deliveryConfirm.payment_method!=='cash'&&deliveryConfirm.payment_status!=='paid'

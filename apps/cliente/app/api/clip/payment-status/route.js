@@ -51,7 +51,7 @@ export async function GET(request){
     const {data:order,error:orderError}=await admin.from('orders').insert({
       customer_id:user.id,merchant_id:snapshot.merchant_id,address_id:snapshot.address_id,status:'pending',
       delivery_mode:snapshot.merchant_delivery_mode||'guti',subtotal:Number(snapshot.subtotal),
-      delivery_fee:45,discount:0,total:Number(snapshot.total),payment_method:'card',payment_status:'paid',notes:snapshot.notes||'',idempotency_key:payment.client_request_id||null,delivery_pin:snapshot.delivery_pin||null
+      delivery_fee:45,tip_amount:Number(snapshot.tip_amount||0),discount:0,total:Number(snapshot.total),payment_method:'card',payment_status:'paid',notes:snapshot.notes||'',idempotency_key:payment.client_request_id||null,delivery_pin:snapshot.delivery_pin||null
     }).select().single()
     if(orderError)return fail('Pago aprobado, pero no pudimos crear el pedido. Contacta a soporte Guti.',500,{clip_payment_id:paymentId})
 

@@ -207,3 +207,11 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}svg{width:20px;h
 
 /* v4.0 horarios especiales */
 .special-hours-v40{margin-top:16px}.special-hour-form-v40{display:grid;grid-template-columns:1.1fr 1.2fr repeat(2,.8fr) 1.5fr auto;gap:8px;align-items:center}.special-hour-form-v40 input,.special-hour-form-v40 select{min-width:0;padding:10px;border:1px solid #ddd;border-radius:9px}.special-hour-form-v40 button{padding:10px 14px;border:0;border-radius:9px;background:#171717;color:#fff;font-weight:800}.special-hour-list-v40{display:grid;gap:7px;margin-top:12px}.special-hour-list-v40 article{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #eee;padding:9px 0}.special-hour-list-v40 article div{display:grid}.special-hour-list-v40 small{color:#777}@media(max-width:800px){.special-hour-form-v40{grid-template-columns:1fr 1fr}.special-hour-form-v40 input:last-of-type{grid-column:1/-1}}
+
+/* Guti Negocios v4.1 */
+.item-note-v41{display:block!important;margin-top:5px!important;padding:6px 8px!important;border-radius:8px;background:#fff3e9;color:#9a4a1d!important;font-size:8px!important;font-style:normal!important;font-weight:700!important}
+.kitchen-detail-v41{background:#fff!important;color:#222!important;border:1px solid #ddd!important}
+.merchant-products-total-v41{display:grid;text-align:right}.merchant-products-total-v41 small{font-size:6px;color:#999}.merchant-products-total-v41 strong{font-size:18px}
+.merchant-payment-info em{display:block;font-size:7px;color:#777;font-style:normal;margin-top:3px}
+.order-general-note-v41{display:grid;grid-template-columns:30px 1fr;gap:8px;align-items:start;margin:10px 0;padding:11px;border-radius:12px;background:#fff8e8;border:1px solid #ffe4a8}.order-general-note-v41 svg{width:16px;color:#b67800}.order-general-note-v41 div{display:grid}.order-general-note-v41 small{font-size:6px;color:#a36e00;font-weight:900}.order-general-note-v41 b{font-size:9px;line-height:1.45}
+.detail-item-v41{align-items:flex-start!important}

@@ -89,7 +89,8 @@ export async function POST(request){
         unit_price:unitPrice,
         quantity,
         line_total:lineTotal,
-        selected_options:cleanOptions
+        selected_options:cleanOptions,
+        item_notes:String(reqItem.item_notes||'').slice(0,300)
       })
     }
 
@@ -102,7 +103,9 @@ export async function POST(request){
     if(quoteError)return fail(quoteError.message||'No pudimos calcular tus descuentos.')
     const quote=Array.isArray(quoteData)?quoteData[0]:quoteData
     const deliveryFee=Number(quote?.delivery_fee??DELIVERY_FEE)
-    const total=Number(quote?.total??Math.round((subtotal+DELIVERY_FEE)*100)/100)
+    const tipAmount=Math.min(500,Math.max(0,Math.round((Number(body.tip_amount)||0)*100)/100))
+    const baseTotal=Number(quote?.total??Math.round((subtotal+DELIVERY_FEE)*100)/100)
+    const total=Math.round((baseTotal+tipAmount)*100)/100
     const deliveryPin=String(randomInt(1000,10000))
 
     const {data:existingRequest}=await admin.from('payment_attempt_locks').select('*').eq('user_id',user.id).eq('request_id',requestId).maybeSingle()
@@ -165,6 +168,7 @@ export async function POST(request){
             notes:String(body.notes||'').slice(0,500),
             merchant_delivery_mode:merchant.delivery_mode||'guti',
             subtotal,
+            tip_amount:tipAmount,
             total,
             coupon_code:couponCode,
             points_requested:Number(quote?.points_used||0),
@@ -212,7 +216,7 @@ export async function POST(request){
     if(status==='authorized'){await admin.from('payment_attempt_locks').update({state:'authorized',provider_payment_id:clip.id||null,updated_at:new Date().toISOString()}).eq('user_id',user.id).eq('request_id',requestId);return fail('El pago quedó autorizado pero no capturado.',409,{clip_status:status,clip_payment_id:clip.id||null})}
     if(status!=='approved')return fail('Clip devolvió un estado de pago no reconocido.',409,{clip_status:status})
 
-    const approvedBeforeOrder={order_id:null,user_id:user.id,provider:'clip',provider_payment_id:clip.id||null,client_request_id:requestId,amount:total,currency:'MXN',status:'paid',status_detail:clip?.status_detail?.code||null,last4:clip?.payment_method?.card?.last_digits||null,brand:clip?.payment_method?.id||null,paid_at:clip?.approved_at||new Date().toISOString(),provider_last_status:'approved',provider_checked_at:new Date().toISOString(),raw_response:{clip,guti_checkout:{merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),subtotal,total,coupon_code:couponCode,points_requested:Number(quote?.points_used||0),items:normalizedItems,delivery_pin:deliveryPin}}}
+    const approvedBeforeOrder={order_id:null,user_id:user.id,provider:'clip',provider_payment_id:clip.id||null,client_request_id:requestId,amount:total,currency:'MXN',status:'paid',status_detail:clip?.status_detail?.code||null,last4:clip?.payment_method?.card?.last_digits||null,brand:clip?.payment_method?.id||null,paid_at:clip?.approved_at||new Date().toISOString(),provider_last_status:'approved',provider_checked_at:new Date().toISOString(),raw_response:{clip,guti_checkout:{merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),subtotal,tip_amount:tipAmount,total,coupon_code:couponCode,points_requested:Number(quote?.points_used||0),items:normalizedItems,delivery_pin:deliveryPin}}}
     const {data:prePayment}=await admin.from('payments').select('id').eq('user_id',user.id).eq('client_request_id',requestId).maybeSingle()
     const {error:preAuditError}=prePayment?.id?await admin.from('payments').update(approvedBeforeOrder).eq('id',prePayment.id):await admin.from('payments').insert(approvedBeforeOrder)
     if(preAuditError)console.error('No se pudo guardar conciliación previa de Clip',preAuditError)
@@ -220,7 +224,7 @@ export async function POST(request){
 
     const {data:order,error:orderError}=await admin.from('orders').insert({
       customer_id:user.id,merchant_id:merchantId,address_id:addressId,status:'pending',
-      delivery_mode:merchant.delivery_mode||'guti',subtotal,delivery_fee:deliveryFee,
+      delivery_mode:merchant.delivery_mode||'guti',subtotal,delivery_fee:deliveryFee,tip_amount:tipAmount,
       discount:0,total,coupon_code:couponCode,points_used:Number(quote?.points_used||0),
       payment_method:'card',payment_status:'paid',notes:String(body.notes||'').slice(0,500),idempotency_key:requestId,delivery_pin:deliveryPin
     }).select().single()
@@ -242,7 +246,7 @@ export async function POST(request){
       last4:clip?.payment_method?.card?.last_digits||null,
       brand:clip?.payment_method?.id||null,
       paid_at:clip?.approved_at||new Date().toISOString(),
-      raw_response:{clip,guti_checkout:{merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),subtotal,total,coupon_code:couponCode,points_requested:Number(quote?.points_used||0),items:normalizedItems,delivery_pin:deliveryPin}}
+      raw_response:{clip,guti_checkout:{merchant_id:merchantId,address_id:addressId,notes:String(body.notes||'').slice(0,500),subtotal,tip_amount:tipAmount,total,coupon_code:couponCode,points_requested:Number(quote?.points_used||0),items:normalizedItems,delivery_pin:deliveryPin}}
     }
 
     if(clip.id){

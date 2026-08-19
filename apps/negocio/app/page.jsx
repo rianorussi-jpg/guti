@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V400_NEGOCIO='4.0.0'
+const GUTI_BUILD_V410_NEGOCIO='4.1.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, ReceiptText, PackageSearch, Store, Clock3, Settings, LogOut,
@@ -197,9 +197,9 @@ export default function Page(){
   }
 
   async function downloadSettlement(s){
-    const {data,error}=await supabase.from('weekly_settlement_orders').select('amount,orders(id,created_at,total,payment_method)').eq('settlement_id',s.id)
+    const {data,error}=await supabase.from('weekly_settlement_orders').select('amount,orders(id,created_at,subtotal,payment_method)').eq('settlement_id',s.id)
     if(error)return setMsg(error.message)
-    const rows=[['Pedido','Fecha','Método','Total pedido','Neto negocio'],...(data||[]).map(x=>[x.orders?.id||'',new Date(x.orders?.created_at).toLocaleString('es-MX'),x.orders?.payment_method||'',x.orders?.total||0,x.amount||0])]
+    const rows=[['Pedido','Fecha','Método','Total productos','Neto negocio'],...(data||[]).map(x=>[x.orders?.id||'',new Date(x.orders?.created_at).toLocaleString('es-MX'),x.orders?.payment_method||'',x.orders?.subtotal||0,x.amount||0])]
     const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n')
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download=`guti-negocio-liquidacion-${s.week_start}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
@@ -712,7 +712,7 @@ export default function Page(){
                 {orders.slice(0,6).map(o=><button className={newOrderIds.includes(o.id)?'new':''} key={o.id} onClick={()=>openOrder(o)}>
                   <span className={`status-dot ${statusMeta[o.status]?.tone||'gray'}`}/>
                   <div><b>#{o.id.slice(0,8)} · {o.profiles?.full_name||'Cliente'}</b><small>{new Date(o.created_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</small></div>
-                  <strong>${Number(o.total).toFixed(2)}</strong>
+                  <strong>${Number(o.subtotal||0).toFixed(2)}</strong>
                   <span className={`status-pill ${statusMeta[o.status]?.tone||'gray'}`}>{statusMeta[o.status]?.label||o.status}</span>
                 </button>)}
                 {!orders.length&&<Empty icon={ReceiptText} title="Todavía no hay pedidos" text="Los nuevos pedidos aparecerán aquí en tiempo real."/>}
@@ -741,9 +741,10 @@ export default function Page(){
               <div className="kitchen-stack">
                 {orders.filter(o=>col.statuses.includes(o.status)).map(o=><article className={`kitchen-ticket ${newOrderIds.includes(o.id)?'fresh':''}`} key={o.id}>
                   <div className="kitchen-ticket-top"><div><small>#{o.id.slice(0,6)}</small><b>{o.profiles?.full_name||'Cliente Guti'}</b></div><strong>{new Date(o.created_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</strong></div>
-                  <div className="kitchen-products">{(kitchenItems[o.id]||[]).map(i=><div key={i.id}><b>{i.quantity}× {i.product_name}</b>{(i.selected_options||[]).map((op,idx)=><small key={idx}>{op.option_name}</small>)}</div>)}</div>
+                  <div className="kitchen-products">{(kitchenItems[o.id]||[]).map(i=><div key={i.id}><b>{i.quantity}× {i.product_name}</b>{(i.selected_options||[]).map((op,idx)=><small key={idx}>{op.group_name?`${op.group_name}: `:''}{op.option_name}</small>)}{i.item_notes&&<em className="item-note-v41">Nota: {i.item_notes}</em>}</div>)}</div>
                   {o.notes&&<p className="kitchen-note">Nota: {o.notes}</p>}
                   <div className="kitchen-actions">
+                    <button className="kitchen-detail-v41" onClick={()=>openOrder(o)}>Ver detalle</button>
                     {o.status==='pending'&&<button onClick={()=>openOrder(o)}>Abrir y aceptar</button>}
                     {o.status==='accepted'&&<button onClick={()=>status(o,'preparing')}>Empezar preparación</button>}
                     {o.status==='preparing'&&<button onClick={()=>status(o,'ready')}>Marcar listo</button>}
@@ -773,7 +774,7 @@ export default function Page(){
                 <small>{new Date(o.created_at).toLocaleString('es-MX')}</small>
               </div>
               <div className="order-customer">
-                <span><Users/></span><div><b>{o.profiles?.full_name||'Cliente Guti'}</b><small>{o.profiles?.phone||'Sin teléfono'}</small></div><strong>${Number(o.total).toFixed(2)}</strong>
+                <span><Users/></span><div><b>{o.profiles?.full_name||'Cliente Guti'}</b><small>{o.profiles?.phone||'Sin teléfono'}</small></div><strong>${Number(o.subtotal||0).toFixed(2)}</strong>
               </div>
               <div className="order-address"><MapPin/><span>{o.addresses?.formatted_address||'Dirección de entrega'}{o.addresses?.instructions&&<small>{o.addresses.instructions}</small>}</span></div>
               {o.estimated_ready_at&&<div className="order-eta"><Timer/><span>Listo aprox. <b>{new Date(o.estimated_ready_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</b> · {o.preparation_minutes||merchantForm.prep_minutes} min</span></div>}
@@ -1050,15 +1051,16 @@ function OrderModal({order,items,onClose,onStatus,onAccept,merchant}){
       <div className="order-modal-body">
         <div className="order-detail-hero">
           <div><span className={`status-pill ${statusMeta[order.status]?.tone||'gray'}`}>{statusMeta[order.status]?.label||order.status}</span><small>{new Date(order.created_at).toLocaleString('es-MX')}</small></div>
-          <strong>${Number(order.total).toFixed(2)}</strong>
+          <div className="merchant-products-total-v41"><small>TOTAL PRODUCTOS</small><strong>${Number(order.subtotal||0).toFixed(2)}</strong></div>
         </div>
         <div className={`merchant-payment-info ${order.payment_method==='cash'&&order.payment_status!=='paid'?'cash':'paid'}`}>
           <span>{order.payment_method==='cash'?<Banknote/>:<CreditCard/>}</span>
-          <div><small>PAGO</small><b>{order.payment_method==='cash'&&order.payment_status!=='paid'?`Efectivo · el repartidor cobrará $${Number(order.total||0).toFixed(2)}`:`${({card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance',cash:'Efectivo'}[order.payment_method]||order.payment_method)} · Pagado`}</b></div>
+          <div><small>PAGO DEL CLIENTE</small><b>{order.payment_method==='cash'&&order.payment_status!=='paid'?'Efectivo · cobro pendiente':`${({card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance',cash:'Efectivo'}[order.payment_method]||order.payment_method)} · ${order.payment_status==='paid'?'Pagado':'Pendiente'}`}</b><em>Tu negocio recibe el total de productos; envío y propina los gestiona Guti.</em></div>
         </div>
         <section className="detail-section"><h3>Productos</h3>
-          {items.map(i=><div className="detail-item" key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.group_name}: {o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}</div><strong>${Number(i.line_total).toFixed(2)}</strong></div>)}
+          {items.map(i=><div className="detail-item detail-item-v41" key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.group_name}: {o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}{i.item_notes&&<em className="item-note-v41">Nota del cliente: {i.item_notes}</em>}</div><strong>${Number(i.line_total).toFixed(2)}</strong></div>)}
         </section>
+        {order.notes&&<section className="order-general-note-v41"><FileText/><div><small>NOTA GENERAL DEL CLIENTE</small><b>{order.notes}</b></div></section>}
         <section className="detail-section info-list">
           <div><Phone/><span><small>Cliente</small><b>{order.profiles?.phone||'Sin teléfono'}</b></span></div>
           <div><MapPin/><span><small>Entrega</small><b>{order.addresses?.formatted_address||'Sin dirección'}</b>{order.addresses?.instructions&&<em>{order.addresses.instructions}</em>}</span></div>

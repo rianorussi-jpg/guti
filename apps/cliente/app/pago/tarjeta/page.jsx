@@ -153,10 +153,12 @@ export default function CardPaymentPage(){
           idempotency_key:checkout.idempotency_key,
           coupon_code:checkout.coupon_code||null,
           points_requested:Number(checkout.points_requested||0),
+          tip_amount:Number(checkout.tip_amount||0),
           items:checkout.items.map(x=>({
             product_id:x.product_id,
             quantity:x.quantity,
-            selected_options:x.selected_options||[]
+            selected_options:x.selected_options||[],
+            item_notes:x.item_notes||''
           }))
         })
       })

@@ -487,3 +487,10 @@ button,input,textarea{font:inherit}button{cursor:pointer}svg{width:20px;height:2
 /* Guti Cliente v4.0.1 */
 .address-actions{display:flex;gap:6px;flex-wrap:wrap}
 .address-actions button:not(.danger){white-space:nowrap}
+
+/* Guti Cliente v4.1 */
+.phone-register-v41{display:grid;grid-template-columns:110px 1fr;gap:8px}.phone-register-v41 select,.phone-register-v41 input{width:100%;min-width:0}
+.tip-card-v41{margin:12px 0;padding:13px;border:1px solid #ffe0cf;background:#fff9f5;border-radius:15px}.tip-card-v41 small{font-size:7px;color:var(--orange);font-weight:900}.tip-card-v41 h4{margin:3px 0;font-size:12px}.tip-card-v41 p{margin:0;color:#777;font-size:8px}.tip-options-v41{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}.tip-options-v41 button,.tip-options-v41 label{min-height:38px;border:1px solid #e6e6e6;background:#fff;border-radius:10px;display:grid;place-items:center;font-size:8px;font-weight:900}.tip-options-v41 .active{border-color:var(--orange);background:#fff0e8;color:var(--orange)}.tip-options-v41 label{grid-template-columns:auto 1fr;padding:0 7px}.tip-options-v41 input{border:0!important;min-width:0;width:100%;padding:0!important;text-align:center;background:transparent!important}
+.rating-backdrop-v41{z-index:10020!important}.rating-modal-v41{max-width:430px}.rating-block-v41{padding:14px 0;border-top:1px solid #eee;display:grid;gap:4px}.rating-block-v41>b{font-size:11px}.rating-block-v41>span{font-size:8px;color:#777}.rating-stars-v41{display:flex;gap:7px;margin-top:6px}.rating-stars-v41 button{border:0;background:transparent;padding:2px;color:#ccc}.rating-stars-v41 button svg{width:30px;height:30px;fill:currentColor}.rating-stars-v41 button.active{color:#ffb000}
+.history-order-actions button svg{width:12px}
+@media(max-width:520px){.tip-options-v41{grid-template-columns:repeat(4,1fr)}.tip-options-v41 label{grid-column:1/-1}.phone-register-v41{grid-template-columns:105px 1fr}}

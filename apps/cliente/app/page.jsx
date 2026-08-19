@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V401_CLIENT='4.0.1'
+const GUTI_BUILD_V410_CLIENT='4.1.0'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -87,6 +87,8 @@ export default function Page(){
   const emailRef=useRef('')
   const passwordRef=useRef('')
   const fullNameRef=useRef('')
+  const phoneRef=useRef('')
+  const [phoneCountry,setPhoneCountry]=useState('+52')
   const [authBusy,setAuthBusy]=useState(false)
 
   const [showAddressPicker,setShowAddressPicker]=useState(false)
@@ -124,6 +126,12 @@ export default function Page(){
   const [supportOrderId,setSupportOrderId]=useState(null)
   const [couponCode,setCouponCode]=useState('')
   const [checkoutQuote,setCheckoutQuote]=useState(null)
+  const [tipAmount,setTipAmount]=useState(0)
+  const [customTip,setCustomTip]=useState('')
+  const [ratingOrder,setRatingOrder]=useState(null)
+  const [merchantStars,setMerchantStars]=useState(0)
+  const [courierStars,setCourierStars]=useState(0)
+  const [ratingBusy,setRatingBusy]=useState(false)
   const [pointsToUse,setPointsToUse]=useState(0)
   const [referralInput,setReferralInput]=useState('')
   const [checkoutIdempotencyKey,setCheckoutIdempotencyKey]=useState('')
@@ -536,7 +544,7 @@ export default function Page(){
         })
       }
     }
-    addConfiguredItem(customizingProduct,selected,customQty,customNotes)
+    addConfiguredItem(customizingProduct,selected,customQty,String(window.__gutiProductNote||customNotes||''));window.__gutiProductNote=''
   }
   const changeQty=(key,d)=>setCart(prev=>prev.map(i=>i.cart_key===key?{...i,qty:i.qty+d}:i).filter(i=>i.qty>0))
   const removeItem=key=>setCart(prev=>prev.filter(i=>i.cart_key!==key))
@@ -572,13 +580,17 @@ export default function Page(){
     const typedName=String(fullNameRef.current||fullName||'').trim()
     const typedEmail=String(emailRef.current||email||'').trim()
     const typedPassword=String(passwordRef.current||password||'')
+    const localPhone=String(phoneRef.current||'').replace(/\D/g,'')
     if(!typedName)return setMessage('Escribe tu nombre.')
+    if(localPhone.length!==10)return setMessage('Escribe un número celular de 10 dígitos.')
     if(!typedEmail)return setMessage('Escribe tu correo.')
     if(typedPassword.length<6)return setMessage('La contraseña debe tener al menos 6 caracteres.')
+    const fullPhone=`${phoneCountry}${localPhone}`
     setAuthBusy(true);setMessage('')
-    const {data,error}=await supabase.auth.signUp({email:typedEmail,password:typedPassword,options:{data:{full_name:typedName}}})
+    const {data,error}=await supabase.auth.signUp({email:typedEmail,password:typedPassword,options:{data:{full_name:typedName,phone:fullPhone,phone_country:phoneCountry,phone_local:localPhone}}})
     setAuthBusy(false)
     if(error)return setMessage(error.message)
+    if(data?.session?.user?.id)await supabase.from('profiles').update({full_name:typedName,phone:fullPhone}).eq('id',data.session.user.id)
     setMessage(data?.session?'Cuenta creada correctamente.':'Cuenta creada. Revisa tu correo si se requiere confirmación.')
     setAuthMode('login')
     if(data?.session)setShowAuth(false)
@@ -704,7 +716,7 @@ export default function Page(){
     setCheckoutMerchantId(merchantId)
     setCheckoutIdempotencyKey(globalThis.crypto?.randomUUID?.()||`guti-${Date.now()}-${Math.random().toString(16).slice(2)}`)
     setCheckoutStep(selectedAddress?2:1)
-    setPaymentMethod('cash')
+    setPaymentMethod('cash');setTipAmount(0);setCustomTip('')
     setShowCart(false)
     setShowCheckout(true)
   }
@@ -725,13 +737,14 @@ export default function Page(){
       points_requested:Number(pointsToUse||0),
       subtotal:group.subtotal,
       delivery_fee:45,
-      total:group.total,
+      tip_amount:Number(tipAmount||0),
+      total:group.total+Number(tipAmount||0),
       items:group.items.map(x=>({
         product_id:x.id,
         name:x.name,
         quantity:x.qty,
         price:Number(x.price),
-        selected_options:x.selected_options||[]
+        selected_options:x.selected_options||[],item_notes:x.item_notes||''
       }))
     }))
     window.location.href='/pago/tarjeta'
@@ -748,7 +761,7 @@ export default function Page(){
     if(zoneError||!zone?.allowed){setMessage('Por ahora Guti sólo entrega dentro de Gutiérrez Zamora. Ajusta el pin a una dirección dentro de la zona de servicio.');setCheckoutStep(1);return}
 
     const q=await quoteCheckout(group)
-    const finalTotal=Number(q?.total??group.total)
+    const finalTotal=Number(q?.total??group.total)+Number(tipAmount||0)
     if(paymentMethod==='guti_balance' && Number(profile?.guti_balance||0) < finalTotal){
       setMessage('No tienes suficiente Guti Balance para este pedido.')
       return
@@ -779,7 +792,7 @@ export default function Page(){
           points_requested:Number(pointsToUse||0),
           customer_phone:profile?.phone||'',
           idempotency_key:checkoutIdempotencyKey||globalThis.crypto?.randomUUID?.()||`guti-${Date.now()}`,
-          items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[]}))
+          items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[],item_notes:x.item_notes||''})),tip_amount:Number(tipAmount||0)
         })
       })
       const result=await response.json().catch(()=>({}))
@@ -805,12 +818,18 @@ export default function Page(){
       p_items:group.items.map(x=>({product_id:x.id,quantity:x.qty,selected_options:x.selected_options||[]}))
     })
     if(oerr){setCheckoutBusy(false);setMessage(oerr.message);return}
+    if(Number(tipAmount||0)>0){const {error:tipError}=await supabase.rpc('apply_order_tip_v41',{p_order_id:orderId,p_tip_amount:Number(tipAmount||0)});if(tipError){setCheckoutBusy(false);setMessage(tipError.message);return}}
+    const {error:itemNoteError}=await supabase.rpc('sync_order_item_notes_v41',{p_order_id:orderId,p_items:group.items.map(x=>({product_id:x.id,selected_options:x.selected_options||[],item_notes:x.item_notes||''}))})
+    if(itemNoteError)console.warn('No se pudieron sincronizar notas de producto',itemNoteError)
     const order={id:orderId}
     setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setCheckoutIdempotencyKey('');setShowCheckout(false);setCheckoutBusy(false)
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
     setTrackingOrderId(order.id);setTab('home');setShowTracking(true)
   }
 
+
+  async function openRating(order){if(!order?.id)return;const {data}=await supabase.from('order_ratings').select('id').eq('order_id',order.id).eq('customer_id',session?.user?.id).maybeSingle();if(data)return showProfileToast('Ya calificaste este pedido. ¡Gracias!');setRatingOrder(order);setMerchantStars(0);setCourierStars(0)}
+  async function submitRating(){if(!ratingOrder||merchantStars<1)return showProfileToast('Califica al negocio de 1 a 5 estrellas.');if(ratingOrder.courier_id&&courierStars<1)return showProfileToast('Califica también a tu repartidor.');setRatingBusy(true);const {error}=await supabase.from('order_ratings').insert({order_id:ratingOrder.id,customer_id:session.user.id,merchant_id:ratingOrder.merchant_id,courier_id:ratingOrder.courier_id||null,merchant_rating:merchantStars,courier_rating:ratingOrder.courier_id?courierStars:null});setRatingBusy(false);if(error)return showProfileToast(error.message,5000);setRatingOrder(null);await loadMerchants();showProfileToast('¡Gracias por tu calificación!')}
 
   const filteredMerchants=merchants.filter(m=>{
     const q=query.trim().toLowerCase()
@@ -855,7 +874,10 @@ export default function Page(){
           <button className={authMode==='login'?'active':''} onClick={()=>setAuthMode('login')}>Entrar</button>
           <button className={authMode==='register'?'active':''} onClick={()=>setAuthMode('register')}>Crear cuenta</button>
         </div>
-        {authMode==='register'&&<input placeholder="Nombre completo" defaultValue={fullName} onInput={e=>{fullNameRef.current=e.currentTarget.value}} autoComplete="name"/>}
+        {authMode==='register'&&<>
+          <input placeholder="Nombre completo" defaultValue={fullName} onInput={e=>{fullNameRef.current=e.currentTarget.value}} autoComplete="name"/>
+          <div className="phone-register-v41"><select value={phoneCountry} onChange={e=>setPhoneCountry(e.target.value)}><option value="+52">🇲🇽 +52</option><option value="+1">🇺🇸 +1</option><option value="+34">🇪🇸 +34</option><option value="+54">🇦🇷 +54</option><option value="+57">🇨🇴 +57</option><option value="+51">🇵🇪 +51</option></select><input inputMode="numeric" maxLength="10" placeholder="Número celular" onInput={e=>{const v=e.currentTarget.value.replace(/\D/g,'').slice(0,10);e.currentTarget.value=v;phoneRef.current=v}} autoComplete="tel-national"/></div>
+        </>}
         <input type="email" placeholder="Correo" defaultValue={email} onInput={e=>{emailRef.current=e.currentTarget.value}} autoComplete="email"/>
         <input type="password" placeholder="Contraseña" defaultValue={password} onInput={e=>{passwordRef.current=e.currentTarget.value}} autoComplete={authMode==='login'?'current-password':'new-password'}/>
         <button className="primary-wide" disabled={authBusy} onClick={authMode==='login'?signIn:signUp}>
@@ -1037,7 +1059,7 @@ export default function Page(){
 
         <div className="custom-notes">
           <label>Nota para este producto</label>
-          <textarea rows="2" placeholder="Ej. Sin cebolla, bien tostado..." value={customNotes} onChange={e=>setCustomNotes(e.target.value)}/>
+          <textarea key={customizingProduct?.id||'note'} rows="2" placeholder="Ej. Sin cebolla, bien tostado..." defaultValue="" onInput={e=>{window.__gutiProductNote=e.currentTarget.value}}/>
         </div>
 
         <footer className="custom-footer">
@@ -1125,9 +1147,10 @@ export default function Page(){
             <div className="checkout-review-line"><span>Envío</span><b>${Number(checkoutQuote?.delivery_fee??45).toFixed(2)}</b></div>
             {Number(checkoutQuote?.coupon_discount||0)>0&&<div className="checkout-review-line discount"><span>Cupón</span><b>-${Number(checkoutQuote.coupon_discount).toFixed(2)}</b></div>}
             {Number(checkoutQuote?.points_discount||0)>0&&<div className="checkout-review-line discount"><span>{checkoutQuote.points_used} Guti Puntos</span><b>-${Number(checkoutQuote.points_discount).toFixed(2)}</b></div>}
-            <div className="checkout-review-line total"><span>Total</span><b>${Number(checkoutQuote?.total??group.total).toFixed(2)}</b></div>
+            {Number(tipAmount||0)>0&&<div className="checkout-review-line"><span>Propina para RepaGuti</span><b>${Number(tipAmount).toFixed(2)}</b></div>}
+            <div className="checkout-review-line total"><span>Total</span><b>${(Number(checkoutQuote?.total??group.total)+Number(tipAmount||0)).toFixed(2)}</b></div>
           </div>
-
+          <section className="tip-card-v41"><div><small>PROPINA</small><h4>¿Quieres dejar propina a RepaGuti?</h4><p>Es opcional y va para tu repartidor.</p></div><div className="tip-options-v41">{[0,10,20,30].map(n=><button key={n} className={Number(tipAmount)===n&&!customTip?'active':''} onClick={()=>{setTipAmount(n);setCustomTip('')}}>{n===0?'Sin propina':`$${n}`}</button>)}<label className={customTip?'active':''}><span>Otra</span><input inputMode="decimal" placeholder="$" value={customTip} onChange={e=>{const v=e.target.value.replace(/[^0-9.]/g,'').slice(0,6);setCustomTip(v);setTipAmount(Math.min(500,Math.max(0,Number(v)||0)))}}/></label></div></section>
           <section className="checkout-rewards-v38">
             <div><small>AHORRA EN GUTI</small><h4>Cupón y Guti Puntos</h4></div>
             <div className="coupon-row-v38"><input placeholder="Código de cupón" value={couponCode} onChange={e=>setCouponCode(e.target.value.toUpperCase())}/><button onClick={()=>quoteCheckout(group)}>Aplicar</button></div>
@@ -1140,7 +1163,7 @@ export default function Page(){
           <div className="checkout-nav-buttons">
             <button className="checkout-back" onClick={()=>setCheckoutStep(2)}><ArrowLeft/>Atrás</button>
             <button className="checkout-confirm" disabled={checkoutBusy} onClick={createOrderFromCheckout}>
-              {checkoutBusy?'Enviando pedido...':<>Confirmar pedido <b>${Number(checkoutQuote?.total??group.total).toFixed(2)}</b></>}
+              {checkoutBusy?'Enviando pedido...':<>Confirmar pedido <b>${(Number(checkoutQuote?.total??group.total)+Number(tipAmount||0)).toFixed(2)}</b></>}
             </button>
           </div>
         </section>}
@@ -1170,7 +1193,8 @@ export default function Page(){
           <small>ENTREGADO</small><h1>¡Pedido entregado con éxito!</h1>
           <p>Gracias por pedir con Guti.mx. Esperamos que lo disfrutes.</p>
           <div className="tracking-summary"><div><span>Pedido</span><b>#{delivered.id?.slice(0,8)}</b></div><div><span>Total</span><b>${Number(delivered.total||0).toFixed(2)}</b></div></div>
-          <button className="primary-wide" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
+          <button className="primary-wide" onClick={()=>openRating(delivered)}><Star/> Calificar pedido</button>
+          <button className="secondary-wide-v41" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
           <button className="support-tracking-btn" onClick={()=>openSupport(delivered.id)}><Headphones/>Soporte Guti</button>
         </section>
         {SupportModal()}
@@ -1281,13 +1305,15 @@ export default function Page(){
         <div className="merchant-copy-v3">
           <h3>{m.name}</h3>
           <p>{m.description||'Negocio local'}</p>
-          <div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span></div>
+          <div>{Number(m.rating_count||0)>=5&&<span><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}<span><Clock3/> 25–40 min</span></div>
         </div>
       </button>
       <button className={fav?'favorite-heart active':'favorite-heart'} onClick={()=>toggleFavorite(m.id)}><Heart/></button>
     </article>
   }
 
+
+  function RatingModal(){if(!ratingOrder)return null;const Stars=({value,onChange})=><div className="rating-stars-v41">{[1,2,3,4,5].map(n=><button key={n} className={n<=value?'active':''} onClick={()=>onChange(n)}><Star/></button>)}</div>;return <div className="modal-backdrop rating-backdrop-v41" onClick={()=>setRatingOrder(null)}><section className="modal-card rating-modal-v41" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setRatingOrder(null)}><X/></button><small className="eyebrow">PEDIDO #{ratingOrder.id.slice(0,8)}</small><h2>¿Cómo estuvo tu pedido?</h2><div className="rating-block-v41"><b>{ratingOrder.merchants?.name||'Negocio'}</b><span>Califica al negocio</span><Stars value={merchantStars} onChange={setMerchantStars}/></div>{ratingOrder.courier_id&&<div className="rating-block-v41"><b>RepaGuti</b><span>Califica a tu repartidor</span><Stars value={courierStars} onChange={setCourierStars}/></div>}<button className="primary-wide" disabled={ratingBusy} onClick={submitRating}>{ratingBusy?'Guardando...':'Enviar calificación'}</button></section></div>}
 
   function HomeView(){
     const promoMerchant=merchants.find(m=>m.cover_url)||merchants[0]
@@ -1414,7 +1440,7 @@ export default function Page(){
         {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order" key={o.id}>
           <span className={`history-icon ${o.status}`}><ReceiptText/></span>
           <div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status)}</em></div>
-          <div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<button onClick={()=>reorderOrder(o)}>Pedir otra vez</button>}</div>
+          <div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<><button onClick={()=>openRating(o)}><Star/> Calificar</button><button onClick={()=>reorderOrder(o)}>Pedir otra vez</button></>}</div>
         </article>)}
         {!orderHistory.some(o=>['delivered','cancelled'].includes(o.status))&&<div className="empty-state small"><ReceiptText/><h3>Aún no hay historial</h3><p>Tus pedidos completados aparecerán aquí.</p></div>}
       </div>
@@ -1514,7 +1540,7 @@ export default function Page(){
         <div className="merchant-hero-overlay"/>
         <div className="merchant-hero-copy">
           <small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p>
-          <div><span><Star/> 4.8</span><span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div>
+          <div>{Number(m.rating_count||0)>=5&&<span><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}<span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div>
         </div>
       </section>
 
@@ -1537,7 +1563,7 @@ export default function Page(){
 
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
-      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}
+      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}
     </main>
   }
 
@@ -1554,7 +1580,7 @@ export default function Page(){
     </div>
     <BottomNav/>
     {profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')} aria-label="Cerrar"><X/></button></div>}
-    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}
+    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}
   </main>
 }
 
