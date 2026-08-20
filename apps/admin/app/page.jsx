@@ -1,10 +1,10 @@
 'use client'
-const GUTI_BUILD_V400_ADMIN='4.0.0'
+const GUTI_BUILD_V430_ADMIN='4.3.0'
 import {useEffect,useMemo,useState} from 'react'
 import {getSupabaseBrowserClient} from '../lib/supabase'
 
 const money=n=>`$${Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2})}`
-const labels={pending:'Pendiente',accepted:'Aceptado',preparing:'Preparando',ready:'Listo',assigned:'Asignado',picked_up:'Recogido',on_the_way:'En camino',delivered:'Entregado',cancelled:'Cancelado'}
+const labels={pending:'Esperando al negocio',accepted:'Preparando',preparing:'Preparando',ready:'Buscando Repartidor',assigned:'Buscando Repartidor',picked_up:'Pedido recogido',on_the_way:'En camino / llegada',delivered:'Entregado',cancelled:'Cancelado'}
 const merchantInitial={name:'',slug:'',merchant_type:'restaurant',description:'',phone:'',address:'',delivery_mode:'guti',commission_percent:'10',prep_minutes:'25',owner_name:'',owner_email:'',owner_phone:'',owner_password:'',open_time:'09:00',close_time:'21:00',bank_name:'',bank_account_holder:'',bank_clabe:''}
 const courierInitial={full_name:'',email:'',phone:'',password:'',vehicle_type:'Moto',bank_name:'',bank_account_holder:'',bank_clabe:''}
 

@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V420_REPARTIDOR='4.2.0'
+const GUTI_BUILD_V430_REPARTIDOR='4.3.0'
 const GUTI_BUILD_V394_REPARTIDOR='3.9.4'
 const GUTI_BUILD_V390_REPARTIDOR='3.9.0'
 import { useEffect,useMemo,useState } from 'react'
@@ -216,6 +216,16 @@ export default function Page(){
     return 0
   }
 
+  async function markArrived(order){
+    if(!order?.id||busy)return
+    setBusy(true);setMsg('')
+    const {error}=await supabase.rpc('courier_mark_arrived_v43',{p_order_id:order.id})
+    setBusy(false)
+    if(error)return setMsg(error.message)
+    setMsg('Llegada registrada. Ahora revisa el pago y entrega el pedido.')
+    await load(session.user.id)
+  }
+
   async function completeDelivery(order){
     setBusy(true);setMsg('')
     const due=amountDue(order)
@@ -297,14 +307,14 @@ export default function Page(){
           <div className="courier-section-head"><div><small>EN CURSO</small><h2>Mi entrega activa</h2></div>{hasActive&&<span className="active-delivery-badge">1 activa</span>}</div>
           {!active?<div className="courier-empty"><PackageCheck/><b>No tienes una entrega activa</b><span>Puedes tomar uno de los pedidos disponibles.</span></div>:<article className="active-order-card">
             <div className="active-order-top">
-              <div><span className="status-orb"><Bike/></span><div><small>{statusLabel[active.status]||active.status}</small><h3>{active.merchants?.name}</h3></div></div>
+              <div><span className="status-orb"><Bike/></span><div><small>{active.courier_arrived_at?'Ya llegué':(statusLabel[active.status]||active.status)}</small><h3>{active.merchants?.name}</h3></div></div>
               <strong>${earningOf(active).toFixed(2)}<small>tu entrega</small></strong>
             </div>
 
             <div className="delivery-progress">
-              {['assigned','picked_up','on_the_way'].map((s,i)=>{
-                const order=['assigned','picked_up','on_the_way'].indexOf(active.status)
-                return <div className={i<=order?'done':''} key={s}><span>{i<order?<CheckCircle2/>:i+1}</span><small>{i===0?'Recoger':i===1?'Recogido':'Entregar'}</small></div>
+              {['assigned','picked_up','on_the_way','arrived'].map((s,i)=>{
+                const current=active.courier_arrived_at?3:['assigned','picked_up','on_the_way'].indexOf(active.status)
+                return <div className={i<=current?'done':''} key={s}><span>{i<current?<CheckCircle2/>:i+1}</span><small>{i===0?'Recoger':i===1?'Recogido':i===2?'En camino':'Llegué'}</small></div>
               })}
             </div>
 
@@ -322,7 +332,9 @@ export default function Page(){
               </div>
             </div>
 
-            {active.status==='on_the_way'&&<div className={`delivery-payment-card ${active.payment_method==='cash'&&active.payment_status!=='paid'?'cash':'paid'}`}>
+            {active.status==='on_the_way'&&!active.courier_arrived_at&&<div className="arrived-help-v43"><MapPin/><div><b>Cuando estés frente al cliente, toca “Ya llegué”</b><span>Hasta ese momento Guti te mostrará si debes cobrar y cuánto.</span></div></div>}
+
+            {active.status==='on_the_way'&&active.courier_arrived_at&&<div className={`delivery-payment-card ${active.payment_method==='cash'&&active.payment_status!=='paid'?'cash':'paid'}`}>
               <span className="payment-icon">{active.payment_method==='cash'?<Banknote/>:<ShieldCheck/>}</span>
               <div>
                 <small>PAGO DEL PEDIDO</small>
@@ -344,7 +356,8 @@ export default function Page(){
             <div className="delivery-main-action">
               {active.status==='assigned'&&<button disabled={busy} onClick={()=>step(active.id,'picked_up')}><PackageCheck/>Confirmar recogida</button>}
               {active.status==='picked_up'&&<button disabled={busy} onClick={()=>step(active.id,'on_the_way')}><Route/>Iniciar entrega</button>}
-              {active.status==='on_the_way'&&<button disabled={busy} onClick={()=>setDeliveryConfirm(active)}><CheckCircle2/>Revisar pago y entregar</button>}
+              {active.status==='on_the_way'&&!active.courier_arrived_at&&<button className="arrived-btn-v43" disabled={busy} onClick={()=>markArrived(active)}><MapPin/>Ya llegué</button>}
+              {active.status==='on_the_way'&&active.courier_arrived_at&&<button disabled={busy} onClick={()=>setDeliveryConfirm(active)}><CheckCircle2/>Revisar pago y entregar</button>}
             </div>
           </article>}
         </section>

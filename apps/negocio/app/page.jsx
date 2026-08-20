@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V410_NEGOCIO='4.1.0'
+const GUTI_BUILD_V430_NEGOCIO='4.3.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, ReceiptText, PackageSearch, Store, Clock3, Settings, LogOut,
@@ -15,16 +15,18 @@ import { getSupabaseBrowserClient } from '../lib/supabase'
 import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
 
 const statusMeta = {
-  pending:{label:'Nuevo',tone:'orange'},
-  accepted:{label:'Aceptado',tone:'blue'},
+  pending:{label:'Esperando al negocio',tone:'orange'},
+  accepted:{label:'Preparando',tone:'purple'},
   preparing:{label:'Preparando',tone:'purple'},
-  ready:{label:'Listo',tone:'green'},
-  assigned:{label:'Repartidor asignado',tone:'blue'},
-  picked_up:{label:'Recogido',tone:'blue'},
-  on_the_way:{label:'En camino',tone:'green'},
+  ready:{label:'Buscando RepaGuti',tone:'green'},
+  assigned:{label:'Buscando RepaGuti',tone:'blue'},
+  picked_up:{label:'Pedido recogido',tone:'blue'},
+  on_the_way:{label:'En camino al cliente',tone:'green'},
   delivered:{label:'Entregado',tone:'gray'},
   cancelled:{label:'Cancelado',tone:'red'}
 }
+
+const statusFor = o => o?.status==='on_the_way'&&o?.courier_arrived_at ? {label:'RepaGuti llegó',tone:'green'} : (statusMeta[o?.status]||{label:o?.status,tone:'gray'})
 
 const dayNames = [
   ['monday','Lunes'],['tuesday','Martes'],['wednesday','Miércoles'],
@@ -328,9 +330,11 @@ export default function Page(){
       p_prep_minutes:Math.max(5,Number(prepMinutes)||25)
     })
     if(error)return setMsg(error.message)
+    const {error:prepError}=await supabase.rpc('merchant_set_order_status',{p_order_id:order.id,p_status:'preparing'})
+    if(prepError)return setMsg(prepError.message)
     setNewOrderIds(prev=>prev.filter(id=>id!==order.id))
     await loadOrders(merchant.id)
-    if(selectedOrder?.id===order.id)setSelectedOrder(prev=>({...prev,status:'accepted',delivery_mode:deliveryMode}))
+    if(selectedOrder?.id===order.id)setSelectedOrder(prev=>({...prev,status:'preparing',delivery_mode:deliveryMode}))
   }
 
   async function openOrder(order){
@@ -710,10 +714,10 @@ export default function Page(){
               <div className="panel-head"><div><small>PEDIDOS</small><h3>Pedidos recientes</h3></div><button onClick={()=>setTab('orders')}>Ver todos <ChevronRight/></button></div>
               <div className="compact-orders">
                 {orders.slice(0,6).map(o=><button className={newOrderIds.includes(o.id)?'new':''} key={o.id} onClick={()=>openOrder(o)}>
-                  <span className={`status-dot ${statusMeta[o.status]?.tone||'gray'}`}/>
+                  <span className={`status-dot ${statusFor(o).tone}`}/>
                   <div><b>#{o.id.slice(0,8)} · {o.profiles?.full_name||'Cliente'}</b><small>{new Date(o.created_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</small></div>
                   <strong>${Number(o.subtotal||0).toFixed(2)}</strong>
-                  <span className={`status-pill ${statusMeta[o.status]?.tone||'gray'}`}>{statusMeta[o.status]?.label||o.status}</span>
+                  <span className={`status-pill ${statusFor(o).tone}`}>{statusFor(o).label}</span>
                 </button>)}
                 {!orders.length&&<Empty icon={ReceiptText} title="Todavía no hay pedidos" text="Los nuevos pedidos aparecerán aquí en tiempo real."/>}
               </div>
@@ -733,8 +737,8 @@ export default function Page(){
           <section className="page-intro kitchen-intro"><div><small>MODO COCINA</small><h2>Comandas en vivo</h2><p>Pantalla simple para tablet: nuevos → preparando → listos.</p></div><button className="secondary-btn" onClick={()=>{loadOrders(merchant.id);loadKitchenItems()}}><RefreshCw/>Actualizar</button></section>
           <section className="kitchen-board">
             {[
-              {key:'new',title:'Nuevos',statuses:['pending','accepted']},
-              {key:'preparing',title:'Preparando',statuses:['preparing']},
+              {key:'new',title:'Esperando',statuses:['pending']},
+              {key:'preparing',title:'Preparando',statuses:['accepted','preparing']},
               {key:'ready',title:'Listos',statuses:['ready','assigned','picked_up']}
             ].map(col=><div className={`kitchen-column ${col.key}`} key={col.key}>
               <header><h3>{col.title}</h3><span>{orders.filter(o=>col.statuses.includes(o.status)).length}</span></header>
@@ -746,8 +750,7 @@ export default function Page(){
                   <div className="kitchen-actions">
                     <button className="kitchen-detail-v41" onClick={()=>openOrder(o)}>Ver detalle</button>
                     {o.status==='pending'&&<button onClick={()=>openOrder(o)}>Abrir y aceptar</button>}
-                    {o.status==='accepted'&&<button onClick={()=>status(o,'preparing')}>Empezar preparación</button>}
-                    {o.status==='preparing'&&<button onClick={()=>status(o,'ready')}>Marcar listo</button>}
+                    {['accepted','preparing'].includes(o.status)&&<button onClick={()=>status(o,'ready')}>Marcar listo</button>}
                     {['ready','assigned','picked_up'].includes(o.status)&&<span>✓ Esperando salida</span>}
                   </div>
                 </article>)}
@@ -770,7 +773,7 @@ export default function Page(){
           <section className="orders-board">
             {shownOrders.map(o=><article className={`order-card ${newOrderIds.includes(o.id)?'new-order':''}`} key={o.id}>
               <div className="order-card-top">
-                <div><span className={`status-pill ${statusMeta[o.status]?.tone||'gray'}`}>{statusMeta[o.status]?.label||o.status}</span>{newOrderIds.includes(o.id)&&<em>NUEVO</em>}</div>
+                <div><span className={`status-pill ${statusFor(o).tone}`}>{statusFor(o).label}</span>{newOrderIds.includes(o.id)&&<em>NUEVO</em>}</div>
                 <small>{new Date(o.created_at).toLocaleString('es-MX')}</small>
               </div>
               <div className="order-customer">
@@ -785,8 +788,7 @@ export default function Page(){
                   <button className="secondary-btn" onClick={()=>acceptOrderWithDelivery(o,'merchant')}>Aceptar · Lo entregamos</button>
                   <button className="primary-btn" onClick={()=>acceptOrderWithDelivery(o,'guti')}>Aceptar · Pedir Guti</button>
                 </>}
-                {o.status==='accepted'&&<button className="primary-btn" onClick={()=>status(o,'preparing')}>Empezar a preparar</button>}
-                {o.status==='preparing'&&<button className="primary-btn" onClick={()=>status(o,'ready')}>Marcar listo</button>}
+                {['accepted','preparing'].includes(o.status)&&<button className="primary-btn" onClick={()=>status(o,'ready')}>Marcar listo</button>}
                 {o.delivery_mode==='merchant'&&o.status==='ready'&&<button className="primary-btn" onClick={()=>status(o,'on_the_way')}>Salió a entrega</button>}
                 {o.delivery_mode==='merchant'&&o.status==='on_the_way'&&<button className="primary-btn" onClick={()=>status(o,'delivered')}>Marcar entregado</button>}
               </div>
@@ -1045,41 +1047,30 @@ export default function Page(){
 
 function OrderModal({order,items,onClose,onStatus,onAccept,merchant}){
   const [prep,setPrep]=useState(Number(order.preparation_minutes||merchant?.prep_minutes||25))
-  return <div className="modal-backdrop" onClick={onClose}>
-    <section className="order-modal" onClick={e=>e.stopPropagation()}>
-      <header><div><small>PEDIDO #{order.id.slice(0,8)}</small><h2>{order.profiles?.full_name||'Cliente Guti'}</h2></div><button onClick={onClose}><X/></button></header>
-      <div className="order-modal-body">
-        <div className="order-detail-hero">
-          <div><span className={`status-pill ${statusMeta[order.status]?.tone||'gray'}`}>{statusMeta[order.status]?.label||order.status}</span><small>{new Date(order.created_at).toLocaleString('es-MX')}</small></div>
-          <div className="merchant-products-total-v41"><small>TOTAL PRODUCTOS</small><strong>${Number(order.subtotal||0).toFixed(2)}</strong></div>
-        </div>
-        <div className={`merchant-payment-info ${order.payment_method==='cash'&&order.payment_status!=='paid'?'cash':'paid'}`}>
-          <span>{order.payment_method==='cash'?<Banknote/>:<CreditCard/>}</span>
-          <div><small>PAGO DEL CLIENTE</small><b>{order.payment_method==='cash'&&order.payment_status!=='paid'?'Efectivo · cobro pendiente':`${({card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance',cash:'Efectivo'}[order.payment_method]||order.payment_method)} · ${order.payment_status==='paid'?'Pagado':'Pendiente'}`}</b><em>Tu negocio recibe el total de productos; envío y propina los gestiona Guti.</em></div>
-        </div>
-        <section className="detail-section"><h3>Productos</h3>
-          {items.map(i=><div className="detail-item detail-item-v41" key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.group_name}: {o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}{i.item_notes&&<em className="item-note-v41">Nota del cliente: {i.item_notes}</em>}</div><strong>${Number(i.line_total).toFixed(2)}</strong></div>)}
+  const paymentLabel={card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance',cash:'Efectivo'}[order.payment_method]||order.payment_method
+  return <div className="modal-backdrop order-detail-backdrop-v43" onClick={onClose}>
+    <section className="order-modal order-modal-v43" onClick={e=>e.stopPropagation()}>
+      <header className="order-modal-header-v43"><div><small>PEDIDO #{order.id.slice(0,8)}</small><h2>{order.profiles?.full_name||'Cliente Guti'}</h2><span>{new Date(order.created_at).toLocaleString('es-MX')}</span></div><button onClick={onClose}><X/></button></header>
+      <div className="order-modal-body order-modal-body-v43">
+        <section className="order-detail-overview-v43">
+          <div><span className={`status-pill ${statusFor(order).tone}`}>{statusFor(order).label}</span><small>ESTADO ACTUAL</small></div>
+          <div><small>TOTAL PRODUCTOS</small><strong>${Number(order.subtotal||0).toFixed(2)}</strong></div>
+          <div><small>MÉTODO DE PAGO</small><b>{paymentLabel}</b><span>{order.payment_status==='paid'?'Pagado':'Pendiente'}</span></div>
         </section>
-        {order.notes&&<section className="order-general-note-v41"><FileText/><div><small>NOTA GENERAL DEL CLIENTE</small><b>{order.notes}</b></div></section>}
-        <section className="detail-section info-list">
-          <div><Phone/><span><small>Cliente</small><b>{order.profiles?.phone||'Sin teléfono'}</b></span></div>
-          <div><MapPin/><span><small>Entrega</small><b>{order.addresses?.formatted_address||'Sin dirección'}</b>{order.addresses?.instructions&&<em>{order.addresses.instructions}</em>}</span></div>
-          {order.estimated_ready_at&&<div><Timer/><span><small>Tiempo estimado</small><b>{order.preparation_minutes} min · {new Date(order.estimated_ready_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</b></span></div>}
+        {order.notes&&<section className="order-client-note-v43"><FileText/><div><small>NOTA GENERAL DEL CLIENTE</small><b>{order.notes}</b></div></section>}
+        <section className="order-products-v43"><div className="order-detail-title-v43"><div><ReceiptText/><span><small>COMANDA</small><h3>Productos del pedido</h3></span></div><b>{items.reduce((s,i)=>s+Number(i.quantity||0),0)} artículo(s)</b></div>
+          <div className="order-products-list-v43">{items.map(i=><article key={i.id}><span className="order-qty-v43">{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).length>0&&<div className="order-options-v43">{(i.selected_options||[]).map((o,idx)=><small key={idx}>{o.group_name?`${o.group_name}: `:''}{o.option_name}{Number(o.extra_price)>0?` +$${Number(o.extra_price).toFixed(2)}`:''}</small>)}</div>}{i.item_notes&&<em className="order-item-note-v43"><FileText/>Nota: {i.item_notes}</em>}</div><strong>${Number(i.line_total||0).toFixed(2)}</strong></article>)}</div>
         </section>
-
-        {order.status==='pending'&&<section className="accept-estimate">
-          <div><Timer/><span><b>¿En cuánto estará listo?</b><small>Este tiempo queda guardado en el pedido.</small></span></div>
-          <div className="prep-selector">{[15,20,25,30,45,60].map(n=><button key={n} className={prep===n?'active':''} onClick={()=>setPrep(n)}>{n} min</button>)}</div>
-        </section>}
+        <section className="order-customer-grid-v43">
+          <article><Phone/><div><small>CLIENTE</small><b>{order.profiles?.full_name||'Cliente Guti'}</b><span>{order.profiles?.phone||'Sin teléfono'}</span></div></article>
+          <article><MapPin/><div><small>DIRECCIÓN DE ENTREGA</small><b>{order.addresses?.formatted_address||'Sin dirección'}</b>{order.addresses?.instructions&&<span>{order.addresses.instructions}</span>}</div></article>
+          {order.estimated_ready_at&&<article><Timer/><div><small>TIEMPO ESTIMADO</small><b>{order.preparation_minutes} min</b><span>Listo aprox. {new Date(order.estimated_ready_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</span></div></article>}
+        </section>
+        {order.status==='pending'&&<section className="accept-estimate accept-estimate-v43"><div><Timer/><span><b>¿En cuánto estará listo?</b><small>Al aceptar, el pedido pasa directamente a Preparando.</small></span></div><div className="prep-selector">{[15,20,25,30,45,60].map(n=><button key={n} className={prep===n?'active':''} onClick={()=>setPrep(n)}>{n} min</button>)}</div></section>}
       </div>
-      <footer className="order-modal-actions">
-        {order.status==='pending'&&<>
-          <button className="danger-btn" onClick={()=>onStatus(order,'cancelled')}>Rechazar</button>
-          <button className="secondary-btn" onClick={()=>onAccept(order,'merchant',prep)}>Aceptar · Repartidor propio</button>
-          <button className="primary-btn" onClick={()=>onAccept(order,'guti',prep)}>Aceptar · Solicitar Guti</button>
-        </>}
-        {order.status==='accepted'&&<button className="primary-btn" onClick={()=>onStatus(order,'preparing')}>Empezar preparación</button>}
-        {order.status==='preparing'&&<button className="primary-btn" onClick={()=>onStatus(order,'ready')}>Marcar listo</button>}
+      <footer className="order-modal-actions order-modal-actions-v43">
+        {order.status==='pending'&&<><button className="danger-btn" onClick={()=>onStatus(order,'cancelled')}>Rechazar</button><button className="secondary-btn" onClick={()=>onAccept(order,'merchant',prep)}>Aceptar · Repartidor propio</button><button className="primary-btn" onClick={()=>onAccept(order,'guti',prep)}>Aceptar · Solicitar Guti</button></>}
+        {['accepted','preparing'].includes(order.status)&&<button className="primary-btn" onClick={()=>onStatus(order,'ready')}>Marcar listo</button>}
         {order.delivery_mode==='merchant'&&order.status==='ready'&&<button className="primary-btn" onClick={()=>onStatus(order,'on_the_way')}>Salió a entrega</button>}
         {order.delivery_mode==='merchant'&&order.status==='on_the_way'&&<button className="primary-btn" onClick={()=>onStatus(order,'delivered')}>Entregado</button>}
         <button className="secondary-btn" onClick={onClose}>Cerrar</button>

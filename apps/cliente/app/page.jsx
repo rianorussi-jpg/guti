@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V421_CLIENT='4.2.1'
+const GUTI_BUILD_V430_CLIENT='4.3.0'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -23,15 +23,15 @@ const categoryDefs = [
   {key:'all', label:'Más', image:'/categories/mas.svg', types:[]}
 ]
 
-const statusLabel = s => ({
-  pending:'Esperando aceptación',
-  accepted:'Pedido aceptado',
-  preparing:'Preparando',
-  ready:'Pedido listo',
-  assigned:'Repartidor asignado',
+const statusLabel = (s,o=null) => ({
+  pending:'Esperando al negocio',
+  accepted:'Preparando tu pedido',
+  preparing:'Preparando tu pedido',
+  ready:'Buscando Repartidor',
+  assigned:'Buscando Repartidor',
   picked_up:'Pedido recogido',
-  on_the_way:'En camino',
-  delivered:'Entregado',
+  on_the_way:o?.courier_arrived_at?'Tu pedido llegó':'Pedido recogido',
+  delivered:'Pedido entregado',
   cancelled:'Cancelado'
 }[s] || s)
 
@@ -65,6 +65,7 @@ export default function Page(){
   const [showTracking,setShowTracking]=useState(false)
   const [deliveredSuccess,setDeliveredSuccess]=useState(null)
   const [orderLoading,setOrderLoading]=useState(false)
+  const [expandedSummaries,setExpandedSummaries]=useState({})
   const activeOrder = activeOrders.find(o=>o.id===trackingOrderId) || activeOrders[0] || null
   const activeCarouselRef=useRef(null)
   const activeCarouselScrollRef=useRef(0)
@@ -308,7 +309,7 @@ export default function Page(){
       addConfiguredItem(prod,item.selected_options||[],Number(item.quantity||1),'')
       count++
     }
-    if(count){setMessage('Agregamos tu pedido anterior al carrito. Revísalo antes de confirmar.');setShowCart(true)}
+    if(count){showProfileToast('Agregamos tu pedido anterior al carrito. Revísalo antes de confirmar.',4500);setShowCart(true)}
     else setMessage('Los productos de ese pedido ya no están disponibles.')
   }
 
@@ -458,7 +459,7 @@ export default function Page(){
     setOrderLoading(true)
     const {data,error}=await supabase
       .from('orders')
-      .select('*,merchants(name,delivery_mode)')
+      .select('*,merchants(name,delivery_mode),order_items(*)')
       .eq('customer_id',uid)
       .neq('status','delivered')
       .neq('status','cancelled')
@@ -474,7 +475,7 @@ export default function Page(){
     if(!uid)return
     const {data,error}=await supabase
       .from('orders')
-      .select('*,merchants(name)')
+      .select('*,merchants(name),order_items(*)')
       .eq('customer_id',uid)
       .order('created_at',{ascending:false})
       .limit(40)
@@ -892,7 +893,7 @@ export default function Page(){
       {supportTopic==='pedido'&&!selected&&<div className="support-order-picker-v395">
         <b>¿Con cuál pedido necesitas ayuda?</b>
         {orders.length
-          ? <div>{orders.map(o=><button key={o.id} onClick={()=>setSupportOrderId(o.id)}><span><strong>#{o.id.slice(0,8)}</strong><small>{o.merchants?.name||'Pedido Guti'} · {statusLabel(o.status)}</small></span><em>${Number(o.total||0).toFixed(2)}</em><ChevronRight/></button>)}</div>
+          ? <div>{orders.map(o=><button key={o.id} onClick={()=>setSupportOrderId(o.id)}><span><strong>#{o.id.slice(0,8)}</strong><small>{o.merchants?.name||'Pedido Guti'} · {statusLabel(o.status,o)}</small></span><em>${Number(o.total||0).toFixed(2)}</em><ChevronRight/></button>)}</div>
           : <p>No encontramos pedidos recientes en esta cuenta.</p>}
       </div>}
       <button className="primary-wide" disabled={needsOrder} onClick={sendSupport}>{needsOrder?'Selecciona un pedido':'Hablar con soporte'}</button>
@@ -1219,62 +1220,80 @@ export default function Page(){
     setShowTracking(false);await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
   }
 
+  function GlobalFeedback(){
+    if(!message||showAuth)return null
+    return <div className="toast-message toast-message-global-v43">{message}<button onClick={()=>setMessage('')}><X/></button></div>
+  }
+
+  function OrderSummary({order,alwaysOpen=false}){
+    if(!order)return null
+    const items=order.order_items||[]
+    const open=alwaysOpen||!!expandedSummaries[order.id]
+    return <section className="customer-order-summary-v43">
+      {!alwaysOpen&&<button className="customer-order-summary-toggle-v43" onClick={()=>setExpandedSummaries(x=>({...x,[order.id]:!x[order.id]}))}><span><ReceiptText/><b>Resumen de tu pedido</b></span><span>{open?'Ocultar':'Ver detalle'} <ChevronDown className={open?'rotated':''}/></span></button>}
+      {open&&<div className="customer-order-summary-body-v43">
+        {items.length?items.map(i=><div className="customer-order-summary-item-v43" key={i.id}><span>{i.quantity}×</span><div><b>{i.product_name}</b>{(i.selected_options||[]).map((op,k)=><small key={k}>{op.group_name?`${op.group_name}: `:''}{op.option_name}{Number(op.extra_price)>0?` +$${Number(op.extra_price).toFixed(2)}`:''}</small>)}{i.item_notes&&<em>Nota: {i.item_notes}</em>}</div><strong>${Number(i.line_total||0).toFixed(2)}</strong></div>):<p className="customer-order-summary-empty-v43">No pudimos cargar el detalle de productos.</p>}
+        {order.notes&&<div className="customer-order-general-note-v43"><b>Nota del pedido</b><span>{order.notes}</span></div>}
+        <div className="customer-order-totals-v43"><div><span>Productos</span><b>${Number(order.subtotal||0).toFixed(2)}</b></div><div><span>Envío</span><b>${Number(order.delivery_fee||45).toFixed(2)}</b></div>{Number(order.tip_amount||0)>0&&<div><span>Propina</span><b>${Number(order.tip_amount).toFixed(2)}</b></div>}<div className="grand"><span>Total</span><b>${Number(order.total||0).toFixed(2)}</b></div></div>
+      </div>}
+    </section>
+  }
+
   function CurrentOrderView(){
     const order=activeOrder
     if(!order&&!deliveredSuccess)return null
     const delivered=deliveredSuccess||(order?.status==='delivered'?order:null)
     if(delivered){
-      return <main className="tracking-page">
-        <div className="tracking-top"><button onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}><ArrowLeft/></button><b>Pedido completado</b><span/></div>
-        <section className="delivered-panel">
+      return <main className="tracking-page tracking-page-v43">
+        <div className="tracking-top"><button onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}><ArrowLeft/></button><b>Pedido entregado</b><span className="tracking-id">#{delivered.id?.slice(0,8)}</span></div>
+        <section className="delivered-panel delivered-panel-v43">
           <span className="delivered-check"><Check/></span>
-          <small>ENTREGADO</small><h1>¡Pedido entregado con éxito!</h1>
+          <small>PASO 6 DE 6</small><h1>¡Pedido entregado con éxito!</h1>
           <p>Gracias por pedir con Guti.mx. Esperamos que lo disfrutes.</p>
-          <div className="tracking-summary"><div><span>Pedido</span><b>#{delivered.id?.slice(0,8)}</b></div><div><span>Total</span><b>${Number(delivered.total||0).toFixed(2)}</b></div></div>
-          <button className="primary-wide" onClick={()=>openRating(delivered)}><Star/> Calificar pedido</button>
-          <button className="secondary-wide-v41" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
+          <OrderSummary order={delivered}/>
+          {delivered.courier_id&&<div className="delivered-rate-courier-v43"><small>CALIFICA A TU REPAGUTI</small><b>¿Cómo fue tu entrega?</b><div>{[1,2,3,4,5].map(n=><button key={n} onClick={()=>openRating(delivered)} aria-label={`${n} estrellas`}><Star/></button>)}</div></div>}
           <button className="support-tracking-btn" onClick={()=>openSupport(delivered.id)}><Headphones/>Soporte Guti</button>
         </section>
-        {SupportModal()}{OrderChatModal()}
+        {GlobalFeedback()}{profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')}><X/></button></div>}{SupportModal()}{OrderChatModal()}{RatingModal()}
       </main>
     }
 
+    const arrived=!!order.courier_arrived_at
     const info={
       pending:['Esperando al negocio','Enviamos tu pedido. Te avisamos apenas lo acepten.',Clock3,1],
-      accepted:['¡Pedido aceptado!','El negocio confirmó tu pedido.',Check,2],
-      preparing:['Preparando tu pedido','El negocio ya está trabajando en tu pedido.',UtensilsCrossed,2],
-      ready:[order.delivery_mode==='merchant'?'Pedido listo':'Buscando repartidor',order.delivery_mode==='merchant'?'El negocio está preparando la salida de su repartidor.':'Tu pedido está disponible para repartidores Guti.',Search,3],
-      assigned:['Ya tienes repartidor','Un repartidor Guti tomó tu pedido.',Bike,3],
-      picked_up:['Pedido recogido','El repartidor ya salió del negocio con tu pedido.',Package,4],
-      on_the_way:['Tu pedido va en camino','Ya falta poco para que llegue.',Navigation,4]
+      accepted:['¡Preparando tu pedido!','El negocio confirmó tu pedido y ya se está trabajando.',UtensilsCrossed,2],
+      preparing:['¡Preparando tu pedido!','El negocio confirmó tu pedido y ya se está trabajando.',UtensilsCrossed,2],
+      ready:['Buscando Repartidor','Tu pedido está listo y buscando RepaGuti.',Search,3],
+      assigned:['Buscando Repartidor','Tu pedido está listo y buscando RepaGuti.',Search,3],
+      picked_up:['Pedido recogido','El repartidor ya está en camino con tu pedido.',Bike,4],
+      on_the_way:arrived?['Tu pedido llegó','Encuéntrate con tu RepaGuti.',MapPin,5]:['Pedido recogido','El repartidor ya está en camino con tu pedido.',Bike,4]
     }[order.status]||['Pedido en curso','Estamos actualizando tu pedido.',Clock3,1]
     const Icon=info[2]
-    const steps=['Enviado','Aceptado','Listo','En camino']
+    const steps=['Esperando','Preparando','Repartidor','Recogido','Llegó']
 
-    return <main className="tracking-page">
+    return <main className="tracking-page tracking-page-v43">
       <div className="tracking-top"><button onClick={()=>setShowTracking(false)}><ArrowLeft/></button><b>Rastrear pedido</b><span className="tracking-id">#{order.id.slice(0,8)}</span></div>
-      <section className="live-order-panel">
-        <span className="live-icon"><Icon/></span>
-        <div className="live-badge"><i/> ACTUALIZACIÓN EN VIVO</div>
-        <h1>{info[0]}</h1><p>{info[1]}</p>
-        <div className="tracking-steps">
-          {steps.map((s,i)=><div className={i<info[3]?'done':''} key={s}><span>{i<info[3]?<Check/>:i+1}</span><b>{s}</b></div>)}
+      <section className="live-order-panel live-order-panel-v43">
+        <div className="tracking-status-hero-v43"><span className="live-icon"><Icon/></span><div><div className="live-badge"><i/> ACTUALIZACIÓN EN VIVO</div><small>PASO {info[3]} DE 6</small><h1>{info[0]}</h1><p>{info[1]}</p></div></div>
+        <div className="tracking-steps tracking-steps-v43">
+          {steps.map((s,i)=><div className={i<info[3]?'done':''} key={s}><span>{i<info[3]-1?<Check/>:i+1}</span><b>{s}</b></div>)}
         </div>
         <div className="tracking-summary tracking-summary-v42">
           <div><span>Negocio</span><b>{order.merchants?.name||'—'}</b></div>
           <div><span>Método de pago</span><b>{({cash:'Efectivo',card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance'}[order.payment_method]||order.payment_method||'—')}</b></div>
           <div><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
-          <div><span>Estado</span><b className="green">{statusLabel(order.status)}</b></div>
+          <div><span>Estado</span><b className="green">{statusLabel(order.status,order)}</b></div>
         </div>
-        {order.courier_id&&<div className="tracking-courier-card-v42"><span><Bike/></span><div><small>TU REPAGUTI</small><b>Puedes escribirle si tienes alguna duda</b></div><button onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear</button></div>}
-        {order.payment_method==='card'&&order.delivery_pin&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
+        <OrderSummary order={order}/>
+        {order.courier_id&&<div className="tracking-courier-card-v42"><span><Bike/></span><div><small>TU REPAGUTI</small><b>{arrived?'Tu RepaGuti ya llegó':'Puedes escribirle si tienes alguna duda'}</b>{arrived&&<p>Encuéntrate con él para recibir tu pedido.</p>}</div><button onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear</button></div>}
+        {order.payment_method==='card'&&order.delivery_pin&&arrived&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
         <div className="tracking-actions-v39">
           <button className="secondary-wide" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
           <button className="support-tracking-btn" onClick={()=>openSupport(order.id)}><Headphones/>Soporte</button>
           {order.status==='pending'&&<button className="cancel-order-v39" onClick={()=>cancelTrackedOrder(order)}>Cancelar pedido</button>}
         </div>
       </section>
-      {SupportModal()}{OrderChatModal()}
+      {GlobalFeedback()}{profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')}><X/></button></div>}{SupportModal()}{OrderChatModal()}
     </main>
   }
 
@@ -1321,13 +1340,14 @@ export default function Page(){
       <div className="section-title"><div><small>EN CURSO</small><h2>{activeOrders.length===1?'Tu pedido':'Tus pedidos'}</h2></div>{activeOrders.length>1&&<span>Desliza →</span>}</div>
       <div className="active-orders-carousel-v2" ref={activeCarouselRef} onScroll={e=>{activeCarouselScrollRef.current=e.currentTarget.scrollLeft}}>
         {activeOrders.map((o,index)=><article className="active-order-card-v2" key={o.id}>
-          <div className="active-order-top"><span className="status-dot"/><small>{statusLabel(o.status)}</small><em>{index+1}/{activeOrders.length}</em></div>
+          <div className="active-order-top"><span className="status-dot"/><small>{statusLabel(o.status,o)}</small><em>{index+1}/{activeOrders.length}</em></div>
           <div className="active-order-main">
             <span className="order-store-icon"><Store/></span>
             <div><b>{o.merchants?.name}</b><small>Pedido #{o.id.slice(0,8)}</small></div>
             <strong>${Number(o.total).toFixed(2)}</strong>
           </div>
-          <button onClick={()=>{setTrackingOrderId(o.id);setShowTracking(true)}}>Rastrear pedido <ArrowRight/></button>
+          <div className="active-order-card-actions-v43"><button onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}><ReceiptText/>{expandedSummaries[o.id]?'Ocultar resumen':'Ver resumen'}</button><button onClick={()=>{setTrackingOrderId(o.id);setShowTracking(true)}}>Rastrear pedido <ArrowRight/></button></div>
+          {expandedSummaries[o.id]&&<OrderSummary order={o} alwaysOpen/>}
         </article>)}
       </div>
     </section>
@@ -1447,7 +1467,7 @@ export default function Page(){
         </div>
       </section>
 
-      {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
+      {GlobalFeedback()}
     </>
   }
 
@@ -1492,10 +1512,10 @@ export default function Page(){
       <OrderCarousel/>
       <div className="orders-history">
         <div className="section-title"><div><small>HISTORIAL</small><h2>Pedidos anteriores</h2></div></div>
-        {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order" key={o.id}>
-          <span className={`history-icon ${o.status}`}><ReceiptText/></span>
-          <div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status)}</em></div>
-          <div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<><button onClick={()=>openRating(o)}><Star/> Calificar</button><button onClick={()=>reorderOrder(o)}>Pedir otra vez</button></>}</div>
+        {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order history-order-v43" key={o.id}>
+          <div className="history-order-main-v43"><span className={`history-icon ${o.status}`}><ReceiptText/></span><div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status,o)}</em></div><div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<><button onClick={()=>openRating(o)}><Star/> Calificar</button><button onClick={()=>reorderOrder(o)}>Pedir otra vez</button></>}</div></div>
+          <button className="history-summary-toggle-v43" onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}><ReceiptText/>{expandedSummaries[o.id]?'Ocultar resumen':'Desglosar pedido'}<ChevronDown className={expandedSummaries[o.id]?'rotated':''}/></button>
+          {expandedSummaries[o.id]&&<OrderSummary order={o} alwaysOpen/>}
         </article>)}
         {!orderHistory.some(o=>['delivered','cancelled'].includes(o.status))&&<div className="empty-state small"><ReceiptText/><h3>Aún no hay historial</h3><p>Tus pedidos completados aparecerán aquí.</p></div>}
       </div>
@@ -1617,7 +1637,7 @@ export default function Page(){
       </section>
 
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
-      {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
+      {GlobalFeedback()}
       {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}{OrderChatModal()}
     </main>
   }
