@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V410_CLIENT='4.1.0'
+const GUTI_BUILD_V420_CLIENT='4.2.0'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -7,7 +7,7 @@ import {
   Headphones, Smartphone, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
   IceCreamBowl, Grid2X2, Store, Star, Clock3, ArrowRight, ArrowLeft,
   Plus, Minus, Trash2, X, WalletCards, Gift, Heart, MapPinned, LogOut,
-  ChevronRight, LocateFixed, Check, Navigation, BadgePercent, Crosshair, Share2, ShieldCheck
+  ChevronRight, LocateFixed, Check, Navigation, BadgePercent, Crosshair, Share2, ShieldCheck, MessageCircle, Send
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
@@ -132,6 +132,11 @@ export default function Page(){
   const [merchantStars,setMerchantStars]=useState(0)
   const [courierStars,setCourierStars]=useState(0)
   const [ratingBusy,setRatingBusy]=useState(false)
+  const [chatOrder,setChatOrder]=useState(null)
+  const [chatMessages,setChatMessages]=useState([])
+  const [chatText,setChatText]=useState('')
+  const [chatBusy,setChatBusy]=useState(false)
+  const chatBottomRef=useRef(null)
   const [pointsToUse,setPointsToUse]=useState(0)
   const [referralInput,setReferralInput]=useState('')
   const [checkoutIdempotencyKey,setCheckoutIdempotencyKey]=useState('')
@@ -213,6 +218,39 @@ export default function Page(){
     try{await enableGutiPush(supabase,session.user.id,'cliente');showProfileToast('Push de Guti activado. Te avisaremos aunque no tengas Guti abierto.')}
     catch(e){showProfileToast(e.message||'No se pudieron activar las notificaciones.')}
   }
+
+  async function loadOrderChat(orderId){
+    if(!orderId)return
+    const {data,error}=await supabase.from('order_messages').select('*').eq('order_id',orderId).order('created_at',{ascending:true})
+    if(!error)setChatMessages(data||[])
+  }
+
+  async function openOrderChat(order){
+    if(!order?.id||!order?.courier_id)return showProfileToast('El chat estará disponible cuando un RepaGuti tome tu pedido.')
+    setChatOrder(order);setChatText('')
+    await loadOrderChat(order.id)
+  }
+
+  async function sendOrderChat(){
+    const text=chatText.trim()
+    if(!chatOrder?.id||!text||chatBusy)return
+    setChatBusy(true)
+    const {error}=await supabase.from('order_messages').insert({order_id:chatOrder.id,sender_id:session.user.id,message:text.slice(0,500)})
+    setChatBusy(false)
+    if(error)return showProfileToast(error.message,4500)
+    setChatText('')
+  }
+
+  useEffect(()=>{
+    if(!chatOrder?.id||!session?.user?.id)return
+    const ch=supabase.channel(`customer-order-chat-${chatOrder.id}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'order_messages',filter:`order_id=eq.${chatOrder.id}`},payload=>{
+        setChatMessages(prev=>prev.some(x=>x.id===payload.new.id)?prev:[...prev,payload.new])
+      }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[chatOrder?.id,session?.user?.id])
+
+  useEffect(()=>{chatBottomRef.current?.scrollIntoView({behavior:'smooth'})},[chatMessages.length,chatOrder?.id])
 
   function openSupport(orderId=null){
     setSupportOrderId(orderId||null)
@@ -1222,15 +1260,17 @@ export default function Page(){
         <div className="tracking-steps">
           {steps.map((s,i)=><div className={i<info[3]?'done':''} key={s}><span>{i<info[3]?<Check/>:i+1}</span><b>{s}</b></div>)}
         </div>
-        <div className="tracking-summary">
+        <div className="tracking-summary tracking-summary-v42">
           <div><span>Negocio</span><b>{order.merchants?.name||'—'}</b></div>
-          <div><span>Entrega</span><b>{order.delivery_mode==='merchant'?'Repartidor del negocio':'Guti'}</b></div>
+          <div><span>Entrega</span><b>{order.delivery_mode==='merchant'?'Repartidor del negocio':'RepaGuti'}</b></div>
           <div><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
           <div><span>Estado</span><b className="green">{statusLabel(order.status)}</b></div>
         </div>
+        {order.courier_id&&<div className="tracking-courier-card-v42"><span><Bike/></span><div><small>TU REPAGUTI</small><b>Tu repartidor ya está asignado</b><p>Puedes escribirle para coordinar la entrega.</p></div><button onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear</button></div>}
         {order.payment_method==='card'&&order.delivery_pin&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
         <div className="tracking-actions-v39">
           <button className="secondary-wide" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
+          {order.courier_id&&<button className="chat-tracking-btn-v42" onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear con RepaGuti</button>}
           <button className="support-tracking-btn" onClick={()=>openSupport(order.id)}><Headphones/>Soporte</button>
           {order.status==='pending'&&<button className="cancel-order-v39" onClick={()=>cancelTrackedOrder(order)}>Cancelar pedido</button>}
         </div>
@@ -1312,6 +1352,22 @@ export default function Page(){
     </article>
   }
 
+
+  function OrderChatModal(){
+    if(!chatOrder)return null
+    return <div className="modal-backdrop chat-backdrop-v42" onClick={()=>setChatOrder(null)}>
+      <section className="order-chat-modal-v42" onClick={e=>e.stopPropagation()}>
+        <header><div><span><MessageCircle/></span><div><small>CHAT DEL PEDIDO #{chatOrder.id.slice(0,8)}</small><b>RepaGuti</b><em>Usa este chat sólo para coordinar tu entrega.</em></div></div><button onClick={()=>setChatOrder(null)}><X/></button></header>
+        <div className="chat-security-v42"><ShieldCheck/><span>Por seguridad, evita compartir datos personales o información de pago.</span></div>
+        <div className="chat-messages-v42">
+          {!chatMessages.length&&<div className="chat-empty-v42"><MessageCircle/><b>Aún no hay mensajes</b><span>Escribe para coordinar la entrega con tu repartidor.</span></div>}
+          {chatMessages.map(m=><div key={m.id} className={`chat-bubble-v42 ${m.sender_id===session?.user?.id?'mine':'theirs'}`}><p>{m.message}</p><small>{new Date(m.created_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</small></div>)}
+          <div ref={chatBottomRef}/>
+        </div>
+        <div className="chat-compose-v42"><input maxLength="500" placeholder="Escribe un mensaje..." value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendOrderChat()}}}/><button disabled={!chatText.trim()||chatBusy} onClick={sendOrderChat}><Send/></button></div>
+      </section>
+    </div>
+  }
 
   function RatingModal(){if(!ratingOrder)return null;const Stars=({value,onChange})=><div className="rating-stars-v41">{[1,2,3,4,5].map(n=><button key={n} className={n<=value?'active':''} onClick={()=>onChange(n)}><Star/></button>)}</div>;return <div className="modal-backdrop rating-backdrop-v41" onClick={()=>setRatingOrder(null)}><section className="modal-card rating-modal-v41" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setRatingOrder(null)}><X/></button><small className="eyebrow">PEDIDO #{ratingOrder.id.slice(0,8)}</small><h2>¿Cómo estuvo tu pedido?</h2><div className="rating-block-v41"><b>{ratingOrder.merchants?.name||'Negocio'}</b><span>Califica al negocio</span><Stars value={merchantStars} onChange={setMerchantStars}/></div>{ratingOrder.courier_id&&<div className="rating-block-v41"><b>RepaGuti</b><span>Califica a tu repartidor</span><Stars value={courierStars} onChange={setCourierStars}/></div>}<button className="primary-wide" disabled={ratingBusy} onClick={submitRating}>{ratingBusy?'Guardando...':'Enviar calificación'}</button></section></div>}
 
@@ -1563,7 +1619,7 @@ export default function Page(){
 
       {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {message&&<div className="toast-message">{message}<button onClick={()=>setMessage('')}><X/></button></div>}
-      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}
+      {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}{OrderChatModal()}
     </main>
   }
 
@@ -1580,7 +1636,7 @@ export default function Page(){
     </div>
     <BottomNav/>
     {profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')} aria-label="Cerrar"><X/></button></div>}
-    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}
+    {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}{OrderChatModal()}
   </main>
 }
 

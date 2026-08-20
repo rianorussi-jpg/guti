@@ -1,12 +1,12 @@
 'use client'
-const GUTI_BUILD_V410_REPARTIDOR='4.1.0'
+const GUTI_BUILD_V420_REPARTIDOR='4.2.0'
 const GUTI_BUILD_V394_REPARTIDOR='3.9.4'
 const GUTI_BUILD_V390_REPARTIDOR='3.9.0'
 import { useEffect,useMemo,useState } from 'react'
 import {
   Bike,LogOut,MapPin,Phone,Clock3,PackageCheck,CheckCircle2,
   Wallet,CalendarDays,History,ChevronRight,RefreshCw,Store,AlertCircle,
-  Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards,CreditCard,Banknote,ShieldCheck,X,Smartphone
+  Map,Route,ReceiptText,TrendingUp,LockKeyhole,Bell,Landmark,CheckCheck,Send,WalletCards,CreditCard,Banknote,ShieldCheck,X,Smartphone,MessageCircle
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
@@ -39,6 +39,10 @@ export default function Page(){
   const [depositReference,setDepositReference]=useState('')
   const [deliveryConfirm,setDeliveryConfirm]=useState(null)
   const [deliveryPin,setDeliveryPin]=useState('')
+  const [chatOrder,setChatOrder]=useState(null)
+  const [chatMessages,setChatMessages]=useState([])
+  const [chatText,setChatText]=useState('')
+  const [chatBusy,setChatBusy]=useState(false)
 
   useEffect(()=>{registerGutiServiceWorker().catch(()=>{})},[])
   useEffect(()=>{try{const x=localStorage.getItem('guti-courier-tab-v39');if(x)setTab(x)}catch{}},[])
@@ -167,6 +171,37 @@ export default function Page(){
     if(error)setMsg(error.message);else await load(session.user.id)
   }
 
+  async function loadOrderChat(orderId){
+    if(!orderId)return
+    const {data,error}=await supabase.from('order_messages').select('*').eq('order_id',orderId).order('created_at',{ascending:true})
+    if(!error)setChatMessages(data||[])
+  }
+
+  async function openOrderChat(order){
+    if(!order?.id)return
+    setChatOrder(order);setChatText('')
+    await loadOrderChat(order.id)
+  }
+
+  async function sendOrderChat(){
+    const text=chatText.trim()
+    if(!chatOrder?.id||!text||chatBusy)return
+    setChatBusy(true)
+    const {error}=await supabase.from('order_messages').insert({order_id:chatOrder.id,sender_id:session.user.id,message:text.slice(0,500)})
+    setChatBusy(false)
+    if(error)return setMsg(error.message)
+    setChatText('')
+  }
+
+  useEffect(()=>{
+    if(!chatOrder?.id||!session?.user?.id)return
+    const ch=supabase.channel(`courier-order-chat-${chatOrder.id}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'order_messages',filter:`order_id=eq.${chatOrder.id}`},payload=>{
+        setChatMessages(prev=>prev.some(x=>x.id===payload.new.id)?prev:[...prev,payload.new])
+      }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[chatOrder?.id,session?.user?.id])
+
   async function step(id,status){
     setBusy(true);setMsg('')
     const {error}=await supabase.rpc('courier_set_order_status',{p_order_id:id,p_status:status})
@@ -279,9 +314,12 @@ export default function Page(){
               <div><span className="route-dot customer"/><div><small>ENTREGAR A</small><b>{active.profiles?.full_name||'Cliente Guti'}</b><p>{active.addresses?.formatted_address}</p>{active.addresses?.postal_code&&<small>CP {active.addresses.postal_code}</small>}{active.addresses?.instructions&&<em>{active.addresses.instructions}</em>}</div></div>
             </div>
 
-            <div className="customer-contact">
+            <div className="customer-contact customer-contact-v42">
               <div><Phone/><span><small>Teléfono del cliente</small><b>{active.profiles?.phone||'No disponible'}</b></span></div>
-              {active.profiles?.phone&&<a href={`tel:${active.profiles.phone}`}><Phone/>Llamar</a>}
+              <div className="customer-contact-actions-v42">
+                <button onClick={()=>openOrderChat(active)}><MessageCircle/>Chatear con cliente</button>
+                {active.profiles?.phone&&<a href={`tel:${active.profiles.phone}`}><Phone/>Llamar</a>}
+              </div>
             </div>
 
             {active.status==='on_the_way'&&<div className={`delivery-payment-card ${active.payment_method==='cash'&&active.payment_status!=='paid'?'cash':'paid'}`}>
@@ -370,6 +408,18 @@ export default function Page(){
       <button className={tab==='payments'?'active':''} onClick={()=>setTab('payments')}><Landmark/><span>Pagos</span>{settlements.filter(s=>s.status==='pending').length>0&&<i>{settlements.filter(s=>s.status==='pending').length}</i>}</button>
       <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History/><span>Historial</span></button>
     </nav>
+
+    {chatOrder&&<div className="delivery-confirm-backdrop chat-courier-backdrop-v42" onClick={()=>setChatOrder(null)}>
+      <section className="courier-chat-modal-v42" onClick={e=>e.stopPropagation()}>
+        <header><div><span><MessageCircle/></span><div><small>PEDIDO #{chatOrder.id.slice(0,8)}</small><b>{chatOrder.profiles?.full_name||'Cliente Guti'}</b><em>Coordina únicamente la entrega.</em></div></div><button onClick={()=>setChatOrder(null)}><X/></button></header>
+        <div className="courier-chat-security-v42"><ShieldCheck/><span>No solicites datos bancarios ni pagos fuera de Guti.</span></div>
+        <div className="courier-chat-messages-v42">
+          {!chatMessages.length&&<div className="courier-chat-empty-v42"><MessageCircle/><b>Aún no hay mensajes</b><span>Escríbele al cliente si necesitas coordinar la entrega.</span></div>}
+          {chatMessages.map(m=><div key={m.id} className={`courier-chat-bubble-v42 ${m.sender_id===session?.user?.id?'mine':'theirs'}`}><p>{m.message}</p><small>{new Date(m.created_at).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</small></div>)}
+        </div>
+        <div className="courier-chat-compose-v42"><input maxLength="500" placeholder="Escribe un mensaje..." value={chatText} onChange={e=>setChatText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();sendOrderChat()}}}/><button disabled={!chatText.trim()||chatBusy} onClick={sendOrderChat}><Send/></button></div>
+      </section>
+    </div>}
 
     {deliveryConfirm&&<div className="delivery-confirm-backdrop" onClick={()=>!busy&&setDeliveryConfirm(null)}>
       <section className="delivery-confirm-modal" onClick={e=>e.stopPropagation()}>
