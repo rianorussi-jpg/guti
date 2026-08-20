@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V420_CLIENT='4.2.0'
+const GUTI_BUILD_V421_CLIENT='4.2.1'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1235,7 +1235,7 @@ export default function Page(){
           <button className="secondary-wide-v41" onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}>Volver al inicio</button>
           <button className="support-tracking-btn" onClick={()=>openSupport(delivered.id)}><Headphones/>Soporte Guti</button>
         </section>
-        {SupportModal()}
+        {SupportModal()}{OrderChatModal()}
       </main>
     }
 
@@ -1262,20 +1262,19 @@ export default function Page(){
         </div>
         <div className="tracking-summary tracking-summary-v42">
           <div><span>Negocio</span><b>{order.merchants?.name||'—'}</b></div>
-          <div><span>Entrega</span><b>{order.delivery_mode==='merchant'?'Repartidor del negocio':'RepaGuti'}</b></div>
+          <div><span>Método de pago</span><b>{({cash:'Efectivo',card:'Tarjeta',transfer:'Transferencia',guti_balance:'Guti Balance'}[order.payment_method]||order.payment_method||'—')}</b></div>
           <div><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
           <div><span>Estado</span><b className="green">{statusLabel(order.status)}</b></div>
         </div>
-        {order.courier_id&&<div className="tracking-courier-card-v42"><span><Bike/></span><div><small>TU REPAGUTI</small><b>Tu repartidor ya está asignado</b><p>Puedes escribirle para coordinar la entrega.</p></div><button onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear</button></div>}
+        {order.courier_id&&<div className="tracking-courier-card-v42"><span><Bike/></span><div><small>TU REPAGUTI</small><b>Puedes escribirle si tienes alguna duda</b></div><button onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear</button></div>}
         {order.payment_method==='card'&&order.delivery_pin&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
         <div className="tracking-actions-v39">
           <button className="secondary-wide" onClick={()=>loadActiveOrders(session.user.id)}>{orderLoading?'Actualizando...':'Actualizar estado'}</button>
-          {order.courier_id&&<button className="chat-tracking-btn-v42" onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear con RepaGuti</button>}
           <button className="support-tracking-btn" onClick={()=>openSupport(order.id)}><Headphones/>Soporte</button>
           {order.status==='pending'&&<button className="cancel-order-v39" onClick={()=>cancelTrackedOrder(order)}>Cancelar pedido</button>}
         </div>
       </section>
-      {SupportModal()}
+      {SupportModal()}{OrderChatModal()}
     </main>
   }
 
