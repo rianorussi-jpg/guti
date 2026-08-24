@@ -1,20 +1,18 @@
 {
-  "name": "kyo-sushi-app",
+  "name": "guti-mx",
   "private": true,
-  "version": "1.0.0",
-  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev:cliente": "npm --workspace apps/cliente run dev",
+    "dev:negocio": "npm --workspace apps/negocio run dev",
+    "dev:repartidor": "npm --workspace apps/repartidor run dev",
+    "dev:admin": "npm --workspace apps/admin run dev"
   },
-  "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-router-dom": "latest",
-    "lucide-react": "latest"
+  "engines": {
+    "node": ">=20.9.0"
   },
-  "devDependencies": {}
+  "packageManager": "npm@10.9.2"
 }
