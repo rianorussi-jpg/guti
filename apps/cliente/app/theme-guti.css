@@ -1,0 +1,136 @@
+/* ===== GUTI · Rediseño "vendedor" (capa sobre globals.css) ===== */
+:root{
+  --orange:#ff4d00;--orange2:#ff8a1f;--orangeSoft:#fff1e8;--green:#12a150;
+  --ink:#1a1210;--muted:#7d6f69;--line:#f0e6e0;--bg:#fff8f4;
+  --grad:linear-gradient(135deg,#ff3d00 0%,#ff7a18 60%,#ffb02e 100%);
+  --shadow:0 14px 36px rgba(120,40,0,.14);--shadow-sm:0 6px 18px rgba(120,40,0,.10);
+}
+html,body{background:#ffe9dc;font-family:"Plus Jakarta Sans",Inter,-apple-system,"Segoe UI",sans-serif}
+.client-app{background:var(--bg);box-shadow:0 0 60px rgba(120,40,0,.15)}
+.client-content{padding:0 16px 120px}
+button{transition:transform .15s,box-shadow .15s,background .15s}
+button:active{transform:scale(.96)}
+
+/* ---- Header ---- */
+.home-header-v3{display:flex;justify-content:space-between;align-items:center;padding:16px 0 8px}
+.address-header-v3{background:#fff;border-radius:16px;padding:9px 12px;box-shadow:var(--shadow-sm);max-width:68%}
+.address-header-v3>svg:first-child{color:var(--orange);width:20px;height:20px}
+.address-header-v3 b{font-size:14px;font-weight:800}
+.address-header-v3 small{font-size:11px}
+.support-btn-v36,.cart-btn-v3{height:44px;border:0;border-radius:15px;background:#fff;box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;gap:6px;position:relative;font-weight:800;font-size:12px;color:var(--ink);padding:0 12px}
+.support-btn-v36 span{display:none}
+.cart-btn-v3{background:var(--grad);color:#fff;width:44px;padding:0;box-shadow:0 10px 22px rgba(255,77,0,.35)}
+.cart-btn-v3 span{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;border-radius:99px;background:var(--ink);color:#fff;border:2px solid var(--bg);font-size:10px;font-weight:800;display:grid;place-items:center}
+
+/* ---- Hero de marca ---- */
+.brand-hero-v3{margin:8px 0 14px;padding:20px 18px;border-radius:24px;background:var(--grad);color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand-hero-v3::after{content:"";position:absolute;right:-40px;top:-50px;width:170px;height:170px;border-radius:50%;background:rgba(255,255,255,.16)}
+.brand-hero-v3 img{height:34px;filter:brightness(0) invert(1);position:relative;z-index:1}
+.brand-hero-v3 p{margin:0;font-size:18px;line-height:1.15;font-weight:800;letter-spacing:-.4px;text-align:right;max-width:55%;position:relative;z-index:1}
+
+/* ---- Buscador ---- */
+.search-v3{height:54px;border:2px solid transparent;border-radius:18px;background:#fff;box-shadow:var(--shadow-sm);padding:0 16px}
+.search-v3:focus-within{border-color:var(--orange)}
+.search-v3 svg{color:var(--orange);width:20px}
+.search-v3 input{font-size:15px;font-weight:600}
+
+/* ---- Categorías ---- */
+.category-grid-v3{gap:18px 8px;padding:22px 0 8px}
+.category-grid-v3 button>span{width:64px;height:64px;border-radius:22px;background:#fff;box-shadow:var(--shadow-sm);border:2px solid #fff}
+.category-grid-v3 button:hover>span{box-shadow:0 10px 24px rgba(255,77,0,.25)}
+.category-grid-v3 button>b{font-size:12px;font-weight:800;color:var(--ink)}
+.category-grid-v3 button>em{background:var(--grad);font-size:8px;padding:3px 6px;top:-6px;right:0}
+
+/* ---- Promos ---- */
+.promo-carousel-v31{border-radius:24px;margin:20px 0;box-shadow:var(--shadow)}
+.promo-slide-v31{height:178px;border-radius:24px}
+.promo-overlay-v3{background:linear-gradient(95deg,rgba(26,18,16,.88) 0%,rgba(255,61,0,.62) 55%,rgba(0,0,0,0) 100%)}
+.promo-content-v3{left:20px;max-width:64%}
+.promo-content-v3 small{font-size:10px;background:#ffd84a;color:var(--ink);padding:4px 9px;border-radius:99px;width:max-content;font-weight:900}
+.promo-content-v3 h2{font-size:25px;line-height:1.05;margin:8px 0 5px;font-weight:900;letter-spacing:-.8px}
+.promo-content-v3 p{font-size:12px;margin:0 0 11px}
+.promo-content-v3 button{background:#fff;color:var(--orange);border-radius:99px;padding:9px 14px;font-size:12px;font-weight:900;box-shadow:0 8px 18px rgba(0,0,0,.25)}
+.promo-content-v3 button svg{width:14px}
+.promo-dots-v31 span{background:rgba(255,255,255,.55);height:6px;border-radius:99px}
+.promo-dots-v31 .active{background:#fff;width:20px}
+
+/* ---- Títulos de sección ---- */
+.section-title h2,.home-section-head-v3 h2{font-size:21px;font-weight:900;letter-spacing:-.7px}
+.section-title small,.eyebrow{font-size:10px;color:var(--orange);font-weight:900;letter-spacing:1.3px}
+.home-section-v3{margin-top:22px}
+.home-section-head-v3 button,.section-title button{color:var(--orange);font-weight:800;font-size:13px}
+
+/* ---- Tarjetas de negocio ---- */
+.merchant-grid-v3{gap:14px}
+.nearby-scroll-v3{gap:12px;padding:2px 2px 10px}
+.merchant-card-v3{border:0;border-radius:22px;background:#fff;box-shadow:var(--shadow-sm)}
+.merchant-card-v3.compact{width:178px;min-width:178px}
+.merchant-image-v3{height:118px}
+.merchant-card-v3.compact .merchant-image-v3{height:112px}
+.merchant-image-v3::after{content:"";position:absolute;inset:auto 0 0 0;height:50%;background:linear-gradient(transparent,rgba(0,0,0,.35))}
+.merchant-delivery-badge{position:absolute;z-index:2;left:8px;bottom:8px;background:#fff;color:var(--ink);font-size:10px;font-weight:800;padding:5px 9px;border-radius:99px}
+.merchant-copy-v3{padding:11px 12px 13px}
+.merchant-copy-v3 h3{font-size:15px;font-weight:800;margin:0 0 2px;letter-spacing:-.3px}
+.merchant-copy-v3 p{font-size:12px;color:var(--muted);margin:0 0 7px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.merchant-copy-v3>div{gap:8px;font-size:12px;font-weight:700;flex-wrap:wrap}
+.merchant-copy-v3>div span{display:flex;align-items:center;gap:3px}
+.merchant-copy-v3>div svg{width:13px;height:13px;color:var(--orange)}
+.favorite-heart{position:absolute;top:9px;right:9px;z-index:3;width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.92);display:grid;place-items:center;box-shadow:0 4px 12px rgba(0,0,0,.18);color:#777}
+.favorite-heart svg{width:17px}
+.favorite-heart.active{background:var(--orange);color:#fff}
+
+/* ---- Pedido en curso ---- */
+.active-order-card-v2{border-radius:22px;background:var(--ink);color:#fff;box-shadow:var(--shadow)}
+.active-order-card-v2 small{color:#ffcfb8}
+.active-order-card-v2 .status-dot{background:#3ee07f;box-shadow:0 0 0 5px rgba(62,224,127,.25)}
+
+/* ---- Navegación inferior ---- */
+.bottom-nav-v3{height:70px;bottom:10px;width:min(calc(100% - 24px),596px);border:0;border-radius:26px;background:rgba(26,18,16,.94);backdrop-filter:blur(18px);box-shadow:0 18px 40px rgba(26,18,16,.35);padding:8px 10px}
+.bottom-nav-v3 button{color:#b9a9a1;font-size:11px;font-weight:700;border-radius:18px}
+.bottom-nav-v3 button svg{width:22px;height:22px}
+.bottom-nav-v3 button.active{color:#fff;background:var(--grad);box-shadow:0 8px 20px rgba(255,77,0,.45)}
+.bottom-nav-v3 button i{background:#ffd84a;color:var(--ink);width:18px;height:18px;font-size:10px;font-weight:900}
+
+/* ---- Página de negocio ---- */
+.merchant-topbar{background:rgba(255,248,244,.9);backdrop-filter:blur(14px)}
+.merchant-topbar b{font-size:16px;font-weight:800}
+.merchant-topbar>button:not(.cart-button-v2){border:0;background:#fff;border-radius:14px;box-shadow:var(--shadow-sm)}
+.cart-button-v2{background:var(--grad);border:0;border-radius:15px;box-shadow:0 10px 22px rgba(255,77,0,.35)}
+.merchant-hero-v2{height:290px;border-radius:0 0 32px 32px}
+.merchant-hero-overlay{background:linear-gradient(180deg,rgba(0,0,0,.05) 25%,rgba(26,18,16,.92) 100%)}
+.merchant-hero-copy small{background:#ffd84a;color:var(--ink);padding:4px 9px;border-radius:99px;font-size:10px;font-weight:900}
+.merchant-hero-copy h1{font-size:32px;font-weight:900;letter-spacing:-1.2px;margin:8px 0 4px}
+.merchant-hero-copy p{font-size:13px;opacity:.9}
+.merchant-hero-copy>div{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.merchant-hero-copy>div span{background:rgba(255,255,255,.18);backdrop-filter:blur(8px);border-radius:99px;padding:6px 11px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px}
+.merchant-hero-copy>div svg{width:14px;height:14px}
+
+/* ---- Productos ---- */
+.merchant-products-v341{padding:20px 16px 130px}
+.merchant-category-heading-v341 h2{font-size:21px;font-weight:900;letter-spacing:-.6px}
+.merchant-category-heading-v341 span{background:var(--orangeSoft);color:var(--orange);font-size:11px}
+.merchant-products-list-v341{gap:12px}
+.merchant-product-card-v341{border:0;border-radius:22px;padding:12px;grid-template-columns:minmax(0,1fr) 112px;gap:12px;box-shadow:var(--shadow-sm)}
+.merchant-product-copy-v341 h3{font-size:16px;font-weight:800;letter-spacing:-.3px;margin-bottom:5px}
+.merchant-product-copy-v341 p{font-size:12px;line-height:1.45;margin-bottom:9px}
+.merchant-product-price-v341 strong{font-size:18px;font-weight:900;color:var(--orange)}
+.merchant-product-price-v341 del{font-size:12px}
+.merchant-product-price-v341 span{font-size:10px;background:#ffd84a;color:var(--ink);padding:4px 8px}
+.merchant-product-image-v341{width:112px;height:112px;border-radius:18px;overflow:visible}
+.merchant-product-image-v341>img{border-radius:18px}
+.merchant-product-image-v341>button{right:-6px;bottom:-6px;width:38px;height:38px;background:var(--grad);border:3px solid #fff;box-shadow:0 8px 18px rgba(255,77,0,.45)}
+.merchant-product-image-v341>button svg{width:18px;height:18px}
+
+/* ---- Barra flotante del carrito ---- */
+.floating-cart-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;width:min(calc(100% - 28px),592px);height:60px;border:0;border-radius:20px;background:var(--grad);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 20px;box-shadow:0 16px 36px rgba(255,61,0,.5);z-index:80;font-size:15px;font-weight:800}
+.floating-cart-bar span{display:flex;align-items:center;gap:10px}
+.floating-cart-bar strong{font-size:18px;font-weight:900;background:rgba(0,0,0,.18);padding:6px 12px;border-radius:12px}
+
+/* ---- Botones, modales ---- */
+.primary-wide,.secondary-wide{border-radius:18px;padding:16px;font-size:15px;font-weight:900;background:var(--grad);box-shadow:0 12px 26px rgba(255,77,0,.35)}
+.secondary-wide{background:#fff;color:var(--orange);box-shadow:inset 0 0 0 2px var(--orange)}
+.modal-backdrop{backdrop-filter:blur(6px);background:rgba(26,18,16,.55)}
+.modal-card{border-radius:28px}
+.qty-control button{border-radius:12px;background:var(--orangeSoft);color:var(--orange);border:0;font-weight:900}
+.checkout-step-title{font-weight:900;letter-spacing:-.4px}
+.empty-state svg{color:var(--orange)}
