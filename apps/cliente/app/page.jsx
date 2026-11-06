@@ -1,28 +1,16 @@
 'use client'
-const GUTI_DESIGN_RELEASE='Studio 5.0'
+const GUTI_BUILD_V430_CLIENT='4.3.0'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Search, ReceiptText, UserRound, ShoppingCart, MapPin, ChevronDown,
   Headphones, Smartphone, UtensilsCrossed, ShoppingBasket, Pill, Package, Bike, CupSoda,
   IceCreamBowl, Grid2X2, Store, Star, Clock3, ArrowRight, ArrowLeft,
-  Plus, Minus, Trash2, X, WalletCards, Gift, Heart, MapPinned, LogOut, ShoppingBag, ArrowUpRight,
+  Plus, Minus, Trash2, X, WalletCards, Gift, Heart, MapPinned, LogOut,
   ChevronRight, LocateFixed, Check, Navigation, BadgePercent, Crosshair, Share2, ShieldCheck, MessageCircle, Send
 } from 'lucide-react'
 import { getSupabaseBrowserClient } from '../lib/supabase'
 import { registerGutiServiceWorker, enableGutiPush } from '../lib/push'
-
-const gutiCategoryVisuals={
-  food:{symbol:'🍜',color:'peach',hint:'Para el antojo'},
-  super:{symbol:'🧺',color:'mint',hint:'Lo de todos los días'},
-  pharmacy:{symbol:'✚',color:'lavender',hint:'Cuida de ti'},
-  errands:{symbol:'⚡',color:'yellow',hint:'Nos encargamos'},
-  delivery:{symbol:'📦',color:'blue',hint:'Va para allá'},
-  drinks:{symbol:'🥤',color:'rose',hint:'Algo fresco'},
-  desserts:{symbol:'🍰',color:'rose',hint:'Algo dulce'},
-  all:{symbol:'✦',color:'sand',hint:'Todo Guti'},
-  other:{symbol:'✳',color:'sand',hint:'Descubre más'}
-}
 
 const categoryDefs = [
   {key:'food', label:'Comida', image:'/categories/comida.svg', types:['restaurant']},
@@ -383,6 +371,12 @@ export default function Page(){
       setMessage(res.error.message)
     }
   }
+
+  useEffect(()=>{
+    if(showCart||showAuth||showAddressPicker||showCheckout||showTracking)return
+    const timer=setInterval(()=>setPromoIndex(i=>(i+1)%2),4500)
+    return ()=>clearInterval(timer)
+  },[showCart,showAuth,showAddressPicker,showCheckout,showTracking])
 
   useEffect(()=>{
     if(!activeCarouselRef.current)return
@@ -783,7 +777,7 @@ export default function Page(){
       subtotal:group.subtotal,
       delivery_fee:45,
       tip_amount:Number(tipAmount||0),
-      total:Number(checkoutQuote?.total??group.total)+Number(tipAmount||0),
+      total:group.total+Number(tipAmount||0),
       items:group.items.map(x=>({
         product_id:x.id,
         name:x.name,
@@ -889,7 +883,7 @@ export default function Page(){
     const orders=supportOrders()
     const selected=orders.find(o=>o.id===supportOrderId)||null
     const needsOrder=supportTopic==='pedido'&&!selected
-    return <div className="modal-backdrop support-global-backdrop-v395" onClick={()=>setSupportOpen(false)}><section className="modal-card support-modal-v38 support-modal-v395 g6-support-modal" onClick={e=>e.stopPropagation()}>
+    return <div className="modal-backdrop support-global-backdrop-v395" onClick={()=>setSupportOpen(false)}><section className="modal-card support-modal-v38 support-modal-v395" onClick={e=>e.stopPropagation()}>
       <button className="modal-close" onClick={()=>setSupportOpen(false)}><X/></button>
       <small className="eyebrow">SOPORTE GUTI</small><h2>¿En qué te ayudamos?</h2>
       {selected
@@ -910,7 +904,7 @@ export default function Page(){
   function AuthModal(){
     if(!showAuth)return null
     return <div className="modal-backdrop" onClick={()=>setShowAuth(false)}>
-      <section className="modal-card auth-modern g6-auth" onClick={e=>e.stopPropagation()}>
+      <section className="modal-card auth-modern" onClick={e=>e.stopPropagation()}>
         <button className="modal-close" onClick={()=>setShowAuth(false)}><X/></button>
         <div className="auth-logo">Guti.mx</div>
         <h2>{authMode==='login'?'Bienvenido de vuelta':'Crea tu cuenta'}</h2>
@@ -936,7 +930,7 @@ export default function Page(){
   function AddressModal(){
     if(!showAddressPicker)return null
     return <div className="modal-backdrop address-backdrop" onClick={()=>setShowAddressPicker(false)}>
-      <section className="modal-card address-modal g6-address-modal" ref={addressModalScrollRef} onScroll={e=>{addressModalScrollTopRef.current=e.currentTarget.scrollTop}} onClick={e=>e.stopPropagation()}>
+      <section className="modal-card address-modal" ref={addressModalScrollRef} onScroll={e=>{addressModalScrollTopRef.current=e.currentTarget.scrollTop}} onClick={e=>e.stopPropagation()}>
         <div className="between">
           <div><small className="eyebrow">ENTREGAR EN</small><h2>{showAddressForm?(editingAddressId?'Editar dirección':'Nueva dirección'):'Mis direcciones'}</h2></div>
           <button className="modal-close static" onClick={()=>setShowAddressPicker(false)}><X/></button>
@@ -990,7 +984,7 @@ export default function Page(){
   function CartDrawer(){
     if(!showCart)return null
     return <div className="cart-overlay" onClick={()=>setShowCart(false)}>
-      <aside className="cart-drawer cart-v2 g6-cart" onClick={e=>e.stopPropagation()}>
+      <aside className="cart-drawer cart-v2" onClick={e=>e.stopPropagation()}>
         <div className="between cart-head">
           <div><small className="eyebrow">TUS PEDIDOS</small><h2>Carrito</h2></div>
           <button className="cart-close" onClick={()=>setShowCart(false)}><X/></button>
@@ -1069,7 +1063,7 @@ export default function Page(){
     const totalCustom=unit*customQty
 
     return <div className="modal-backdrop" onClick={()=>setCustomizingProduct(null)}>
-      <section className="customer-custom-modal g6-customizer" onClick={e=>e.stopPropagation()}>
+      <section className="customer-custom-modal" onClick={e=>e.stopPropagation()}>
         <header>
           <div><small>PERSONALIZA TU PEDIDO</small><h2>{customizingProduct.name}</h2></div>
           <button onClick={()=>setCustomizingProduct(null)}><X/></button>
@@ -1127,22 +1121,22 @@ export default function Page(){
     if(!group)return null
     const merchant=group.merchant
     const methods=[
-      {id:'cash',label:'Efectivo',desc:'Paga al recibir tu pedido',icon:'$'},
-      {id:'transfer',label:'Transferencia',desc:'Pago por transferencia',icon:'↗'},
-      {id:'card',label:'Tarjeta',desc:'Crédito o débito con Clip',icon:'▦'},
-      {id:'guti_balance',label:'Guti Balance',desc:`Saldo: $${Number(profile?.guti_balance||0).toFixed(2)}`,icon:'✳',coming:Number(profile?.guti_balance||0)<group.total}
+      {id:'cash',label:'Efectivo',desc:'Paga al recibir tu pedido',icon:'💵'},
+      {id:'transfer',label:'Transferencia',desc:'Pago por transferencia',icon:'🏦'},
+      {id:'card',label:'Tarjeta',desc:'Crédito o débito con Clip',icon:'💳'},
+      {id:'guti_balance',label:'Guti Balance',desc:`Saldo: $${Number(profile?.guti_balance||0).toFixed(2)}`,icon:'🧡',coming:Number(profile?.guti_balance||0)<group.total}
     ]
     return <div className="checkout-backdrop" onClick={()=>setShowCheckout(false)}>
-      <section className="checkout-modal g6-checkout-modal" onClick={e=>e.stopPropagation()}>
-        <header className="checkout-top g6-checkout-top">
+      <section className="checkout-modal" onClick={e=>e.stopPropagation()}>
+        <header className="checkout-top">
           <button onClick={()=>setShowCheckout(false)}><X/></button>
           <div><small>FINALIZAR PEDIDO</small><h2>{merchant?.name||'Tu pedido'}</h2></div>
           <span>{checkoutStep}/3</span>
         </header>
-        <div className="g6-checkout-steps">{[[1,'Dirección'],[2,'Pago'],[3,'Confirmar']].map(([n,label])=><span key={n} className={checkoutStep>=n?'active':''}><i>{checkoutStep>n?'✓':n}</i>{label}</span>)}</div><div className="g6-checkout-body"><aside className="g6-checkout-aside"><span>LISTO PARA TI</span><h3>Tu antojo está casi listo.</h3><div className="g6-checkout-aside-shop">{merchant?.cover_url?<img src={merchant.cover_url} alt=""/>:<div>✳</div>}<b>{merchant?.name||'Negocio Guti'}</b></div><p>{group.items.reduce((s,i)=>s+i.qty,0)} productos · envío fijo $45</p><div className="g6-checkout-aside-total"><span>TOTAL ESTIMADO</span><strong>${(Number(checkoutQuote?.total??group.total)+Number(tipAmount||0)).toFixed(2)}</strong></div><small>Siempre de aquí, hasta tu puerta.</small></aside><div className="g6-checkout-main">
+        <div className="checkout-progress">{[1,2,3].map(n=><span key={n} className={checkoutStep>=n?'active':''}/>)}</div>
 
         {checkoutStep===1&&<section className="checkout-step">
-          <div className="checkout-step-title"><span className="g6-step-mark">⌖</span><div><small>PASO 1</small><h3>¿Dónde lo entregamos?</h3><p>Selecciona una dirección guardada.</p></div></div>
+          <div className="checkout-step-title"><span><MapPin/></span><div><small>PASO 1</small><h3>¿Dónde lo entregamos?</h3><p>Selecciona una dirección guardada.</p></div></div>
           {selectedAddress?<button className="checkout-selected-address" onClick={()=>setShowAddressPicker(true)}>
             <span><MapPin/></span><div><b>{selectedAddress.label||'Dirección'}</b><small>{selectedAddress.formatted_address}</small></div><ChevronRight/>
           </button>:<button className="checkout-add-address" onClick={()=>setShowAddressPicker(true)}><Plus/>Agregar dirección</button>}
@@ -1150,27 +1144,30 @@ export default function Page(){
         </section>}
 
         {checkoutStep===2&&<section className="checkout-step">
-          <div className="checkout-step-title"><span className="g6-step-mark">▦</span><div><small>PASO 2</small><h3>Método de pago</h3><p>Elige cómo quieres pagar.</p></div></div>
+          <div className="checkout-step-title"><span><WalletCards/></span><div><small>PASO 2</small><h3>Método de pago</h3><p>Elige cómo quieres pagar.</p></div></div>
           <div className="payment-methods">
             {methods.map(m=><button key={m.id} disabled={m.id==='card'?false:!!m.coming} className={paymentMethod===m.id?'selected':''} onClick={()=>{setPaymentMethod(m.id);if(m.id!=='card'){setCardToken(null);setCardReady(false);setCardError('')}}}>
-              <span className={`payment-emoji g6-pay-icon g6-pay-${m.id}`}>{m.icon}</span>
+              <span className="payment-emoji">{m.icon}</span>
               <div><b>{m.label}</b><small>{m.desc}</small></div>
               {m.coming?<em>{m.id==='guti_balance'?'SIN SALDO':'PRÓXIMAMENTE'}</em>:<span className="payment-check">{paymentMethod===m.id?<Check/>:null}</span>}
             </button>)}
           </div>
           {paymentMethod==='card'&&<section className="clip-dedicated-choice">
-            <div className="clip-dedicated-icon">▦</div>
-            <div><b>Protegido por Clip</b><small>Primero revisa tu pedido, descuentos y propina. Después te llevaremos al pago seguro.</small></div>
-          </section>}
+            <div className="clip-dedicated-icon">💳</div>
+            <div><b>Pago seguro con Clip</b><small>La tarjeta se captura en una pantalla dedicada y segura.</small></div>
+            <button type="button" onClick={goToClipCardPayment}>Continuar con Clip <ArrowRight/></button>
+          </section>} 
           <div className="checkout-nav-buttons">
             <button className="checkout-back" onClick={()=>setCheckoutStep(1)}><ArrowLeft/>Atrás</button>
-            <button className="checkout-next" onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>
+            {paymentMethod==='card'
+              ? <button className="checkout-next" onClick={goToClipCardPayment}>Continuar con Clip <ArrowRight/></button>
+              : <button className="checkout-next" onClick={()=>setCheckoutStep(3)}>Revisar pedido <ArrowRight/></button>}
           </div>
         </section>}
 
         {checkoutStep===3&&<section className="checkout-step">
-          <div className="checkout-step-title"><span className="g6-step-mark">▤</span><div><small>PASO 3</small><h3>Revisa y confirma</h3><p>Comprueba que todo esté correcto.</p></div></div>
-          <div className="checkout-review-card g6-review-card">
+          <div className="checkout-step-title"><span><ReceiptText/></span><div><small>PASO 3</small><h3>Revisa y confirma</h3><p>Comprueba que todo esté correcto.</p></div></div>
+          <div className="checkout-review-card">
             <div className="checkout-review-head">
               <span className="merchant-cart-logo">{merchant?.logo_url?<img src={merchant.logo_url} alt=""/>:<Store/>}</span>
               <div><small>PEDIDO EN</small><b>{merchant?.name||'Negocio'}</b></div>
@@ -1192,8 +1189,8 @@ export default function Page(){
             {Number(tipAmount||0)>0&&<div className="checkout-review-line"><span>Propina para RepaGuti</span><b>${Number(tipAmount).toFixed(2)}</b></div>}
             <div className="checkout-review-line total"><span>Total</span><b>${(Number(checkoutQuote?.total??group.total)+Number(tipAmount||0)).toFixed(2)}</b></div>
           </div>
-          <section className="tip-card-v41 g6-tip-card"><div><small>PROPINA</small><h4>¿Quieres dejar propina a RepaGuti?</h4><p>Es opcional y va para tu repartidor.</p></div><div className="tip-options-v41">{[0,10,20,30].map(n=><button key={n} className={Number(tipAmount)===n&&!customTip?'active':''} onClick={()=>{setTipAmount(n);setCustomTip('')}}>{n===0?'Sin propina':`$${n}`}</button>)}<label className={customTip?'active':''}><span>Otra</span><input inputMode="decimal" placeholder="$" value={customTip} onChange={e=>{const v=e.target.value.replace(/[^0-9.]/g,'').slice(0,6);setCustomTip(v);setTipAmount(Math.min(500,Math.max(0,Number(v)||0)))}}/></label></div></section>
-          <section className="checkout-rewards-v38 g6-reward-card">
+          <section className="tip-card-v41"><div><small>PROPINA</small><h4>¿Quieres dejar propina a RepaGuti?</h4><p>Es opcional y va para tu repartidor.</p></div><div className="tip-options-v41">{[0,10,20,30].map(n=><button key={n} className={Number(tipAmount)===n&&!customTip?'active':''} onClick={()=>{setTipAmount(n);setCustomTip('')}}>{n===0?'Sin propina':`$${n}`}</button>)}<label className={customTip?'active':''}><span>Otra</span><input inputMode="decimal" placeholder="$" value={customTip} onChange={e=>{const v=e.target.value.replace(/[^0-9.]/g,'').slice(0,6);setCustomTip(v);setTipAmount(Math.min(500,Math.max(0,Number(v)||0)))}}/></label></div></section>
+          <section className="checkout-rewards-v38">
             <div><small>AHORRA EN GUTI</small><h4>Cupón y Guti Puntos</h4></div>
             <div className="coupon-row-v38"><input placeholder="Código de cupón" value={couponCode} onChange={e=>setCouponCode(e.target.value.toUpperCase())}/><button onClick={()=>quoteCheckout(group)}>Aplicar</button></div>
             <div className="points-row-v38"><div><b>{profile?.points||0} puntos disponibles</b><small>100 puntos = $10 · máximo 25% del subtotal</small></div><input type="number" min="0" max={profile?.points||0} step="10" value={pointsToUse} onChange={e=>setPointsToUse(Math.max(0,Number(e.target.value)||0))}/><button onClick={()=>quoteCheckout(group)}>Usar</button></div>
@@ -1204,13 +1201,12 @@ export default function Page(){
 
           <div className="checkout-nav-buttons">
             <button className="checkout-back" onClick={()=>setCheckoutStep(2)}><ArrowLeft/>Atrás</button>
-            <button className="checkout-confirm" disabled={checkoutBusy} onClick={paymentMethod==='card'?goToClipCardPayment:createOrderFromCheckout}>
-              {checkoutBusy?'Enviando pedido...':<>{paymentMethod==='card'?'Ir a pagar con Clip':'Confirmar pedido'} <b>${(Number(checkoutQuote?.total??group.total)+Number(tipAmount||0)).toFixed(2)}</b></>}
+            <button className="checkout-confirm" disabled={checkoutBusy} onClick={createOrderFromCheckout}>
+              {checkoutBusy?'Enviando pedido...':<>Confirmar pedido <b>${(Number(checkoutQuote?.total??group.total)+Number(tipAmount||0)).toFixed(2)}</b></>}
             </button>
           </div>
         </section>}
         {message&&<div className="checkout-message">{message}</div>}
-        </div></div>
       </section>
     </div>
   }
@@ -1248,7 +1244,7 @@ export default function Page(){
     if(!order&&!deliveredSuccess)return null
     const delivered=deliveredSuccess||(order?.status==='delivered'?order:null)
     if(delivered){
-      return <main className="tracking-page tracking-page-v43 g6-tracking-page">
+      return <main className="tracking-page tracking-page-v43">
         <div className="tracking-top"><button onClick={()=>{setDeliveredSuccess(null);setShowTracking(false);setTab('home')}}><ArrowLeft/></button><b>Pedido entregado</b><span className="tracking-id">#{delivered.id?.slice(0,8)}</span></div>
         <section className="delivered-panel delivered-panel-v43">
           <span className="delivered-check"><Check/></span>
@@ -1273,13 +1269,13 @@ export default function Page(){
       on_the_way:arrived?['Tu pedido llegó','Encuéntrate con tu RepaGuti.',MapPin,5]:['Pedido recogido','El repartidor ya está en camino con tu pedido.',Bike,4]
     }[order.status]||['Pedido en curso','Estamos actualizando tu pedido.',Clock3,1]
     const Icon=info[2]
-    const steps=['Esperando al negocio','Preparando tu pedido','Buscando RepaGuti','En camino','En la puerta']
+    const steps=['Esperando','Preparando','Repartidor','Recogido','Llegó']
 
     return <main className="tracking-page tracking-page-v43">
-      <div className="tracking-top"><button onClick={()=>setShowTracking(false)} aria-label="Volver"><ArrowLeft/></button><b>Tu pedido en camino</b><span className="tracking-id">#{order.id.slice(0,8)}</span></div>
-      <section className="live-order-panel live-order-panel-v43 g6-live-order">
-        <div className="tracking-status-hero-v43 g6-tracking-hero"><span className="live-icon"><strong className="g6-tracking-pictogram" aria-hidden="true">{info[3]===1?'⌛':info[3]===2?'✳':info[3]===3?'⌕':info[3]===4?'↗':'✓'}</strong></span><div><div className="live-badge"><i/> ACTUALIZACIÓN EN VIVO</div><small>PASO {info[3]} DE 6</small><h1>{info[0]}</h1><p>{info[1]}</p></div></div>
-        <div className="tracking-steps tracking-steps-v43 g6-tracking-steps">
+      <div className="tracking-top"><button onClick={()=>setShowTracking(false)}><ArrowLeft/></button><b>Rastrear pedido</b><span className="tracking-id">#{order.id.slice(0,8)}</span></div>
+      <section className="live-order-panel live-order-panel-v43">
+        <div className="tracking-status-hero-v43"><span className="live-icon"><Icon/></span><div><div className="live-badge"><i/> ACTUALIZACIÓN EN VIVO</div><small>PASO {info[3]} DE 6</small><h1>{info[0]}</h1><p>{info[1]}</p></div></div>
+        <div className="tracking-steps tracking-steps-v43">
           {steps.map((s,i)=><div className={i<info[3]?'done':''} key={s}><span>{i<info[3]-1?<Check/>:i+1}</span><b>{s}</b></div>)}
         </div>
         <div className="tracking-summary tracking-summary-v42">
@@ -1303,14 +1299,14 @@ export default function Page(){
 
   function BottomNav(){
     const items=[
-      ['home','Inicio','⌂'],
-      ['orders','Pedidos','▤'],
-      ['favorites','Guardados','♡'],
-      ['profile','Mi cuenta','◉']
+      ['home','Inicio',Home],
+      ['orders','Pedidos',ReceiptText],
+      ['favorites','Favoritos',Heart],
+      ['profile','Perfil',UserRound]
     ]
-    return <nav className="bottom-nav-v3 g6-nav" aria-label="Navegación principal">
-      {items.map(([key,label,mark])=><button key={key} className={tab===key?'active':''} aria-label={label} onClick={()=>{setSelectedMerchant(null);setTab(key)}}>
-        <span className="g6-nav-glyph" aria-hidden="true">{mark}</span><span className="g6-nav-label">{label}</span>
+    return <nav className="bottom-nav-v3">
+      {items.map(([key,label,Icon])=><button className={tab===key?'active':''} key={key} onClick={()=>{setSelectedMerchant(null);setTab(key)}}>
+        <Icon/><span>{label}</span>
         {key==='orders'&&activeOrders.length>0&&<i>{activeOrders.length}</i>}
       </button>)}
     </nav>
@@ -1318,68 +1314,68 @@ export default function Page(){
 
 
   function Header(){
-    return <header className="g6-header">
-      <div className="g6-header-top">
-        <div className="g6-logo" aria-label="Guti. De aquí para ti"><strong>guti<span>.</span></strong><small>DE AQUÍ PARA TI</small></div>
-        <div className="g6-header-actions">
-          <button className="g6-help" onClick={()=>openSupport(null)} aria-label="Ayuda y soporte"><span>?</span><em>Ayuda</em></button>
-          <button className="g6-bag" onClick={()=>setShowCart(true)} aria-label={`Abrir carrito con ${cartCount} artículos`}><ShoppingBag/>{cartCount>0&&<span>{cartCount}</span>}</button>
+    return <header className="home-header-v3">
+      <button className="address-header-v3" onClick={()=>setShowAddressPicker(true)}>
+        <MapPin/>
+        <div>
+          <b>{selectedAddress?.label||'Gutiérrez Zamora, Ver.'}</b>
+          <small>{selectedAddress?.formatted_address||'Selecciona tu dirección'}</small>
         </div>
-      </div>
-      <button className="g6-address" onClick={()=>setShowAddressPicker(true)}>
-        <span className="g6-location-illustration" aria-hidden="true"><span>↗</span></span>
-        <span className="g6-address-text"><small>ENTREGA EN</small><b>{selectedAddress?.label||'Gutiérrez Zamora, Ver.'}</b><em>{selectedAddress?.formatted_address||'Agrega una dirección para recibir tus pedidos'}</em></span>
-        <span className="g6-address-change">Cambiar <ChevronDown/></span>
+        <ChevronDown/>
       </button>
+      <div className="header-actions-v3">
+        <button className="support-btn-v36" onClick={()=>openSupport(null)} title="Soporte Guti"><Headphones/><span>Soporte</span></button>
+        <button className="cart-btn-v3" onClick={()=>setShowCart(true)}>
+          <ShoppingCart/>
+          {cartCount>0&&<span>{cartCount}</span>}
+        </button>
+      </div>
     </header>
   }
 
 
   function OrderCarousel(){
     if(!activeOrders.length)return null
-    return <section className="g6-active-orders">
-      <div className="g6-section-top"><div><small><span className="g6-live-dot"/> EN SEGUIMIENTO</small><h2>Tu pedido, en movimiento.</h2></div><span>{activeOrders.length} activo{activeOrders.length!==1?'s':''}</span></div>
+    return <section className="orders-carousel-section-v2">
+      <div className="section-title"><div><small>EN CURSO</small><h2>{activeOrders.length===1?'Tu pedido':'Tus pedidos'}</h2></div>{activeOrders.length>1&&<span>Desliza →</span>}</div>
       <div className="active-orders-carousel-v2" ref={activeCarouselRef} onScroll={e=>{activeCarouselScrollRef.current=e.currentTarget.scrollLeft}}>
-        {activeOrders.map((o,index)=><article className="g6-active-card" key={o.id}>
-          <div className="g6-active-card-head"><span><span className="g6-live-dot"/>{statusLabel(o.status,o)}</span><small>#{o.id.slice(0,8)}</small></div>
-          <div className="g6-active-card-main"><div><small>VIENE DE</small><h3>{o.merchants?.name||'Tu negocio'}</h3><p>Te avisamos en cada etapa.</p></div><strong>${Number(o.total).toFixed(2)}</strong></div>
-          <div className="g6-active-card-foot"><button className="g6-text-button" onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}>{expandedSummaries[o.id]?'Ocultar productos':'Ver lo que pedí'} <ChevronDown/></button><button className="g6-track-button" onClick={()=>{setTrackingOrderId(o.id);setShowTracking(true)}}>Seguir pedido <ArrowRight/></button></div>
+        {activeOrders.map((o,index)=><article className="active-order-card-v2" key={o.id}>
+          <div className="active-order-top"><span className="status-dot"/><small>{statusLabel(o.status,o)}</small><em>{index+1}/{activeOrders.length}</em></div>
+          <div className="active-order-main">
+            <span className="order-store-icon"><Store/></span>
+            <div><b>{o.merchants?.name}</b><small>Pedido #{o.id.slice(0,8)}</small></div>
+            <strong>${Number(o.total).toFixed(2)}</strong>
+          </div>
+          <div className="active-order-card-actions-v43"><button onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}><ReceiptText/>{expandedSummaries[o.id]?'Ocultar resumen':'Ver resumen'}</button><button onClick={()=>{setTrackingOrderId(o.id);setShowTracking(true)}}>Rastrear pedido <ArrowRight/></button></div>
           {expandedSummaries[o.id]&&<OrderSummary order={o} alwaysOpen/>}
         </article>)}
       </div>
     </section>
   }
 
-
   function MerchantCard({m,compact=false}){
     const fav=favoriteIds.includes(m.id)
-    const isFood=m.merchant_type==='restaurant'
-    return <article className={`g6-merchant-card ${compact?'compact':''}`}>
-      <button className="g6-merchant-open" onClick={()=>openMerchant(m)} aria-label={`Ver productos de ${m.name}`}>
-        <div className="g6-merchant-photo">
-          {m.cover_url?<img src={m.cover_url} alt={m.name} loading="lazy"/>:<span className="g6-photo-placeholder">{isFood?'✳':'◈'}<small>GUTI LOCAL</small></span>}
-          <span className="g6-merchant-photo-label">{isFood?'COMIDA':'CERCA DE TI'}</span>
+    return <article className={compact?'merchant-card-v3 compact':'merchant-card-v3'}>
+      <button className="merchant-card-main" onClick={()=>openMerchant(m)}>
+        <div className="merchant-image-v3">
+          {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<Store/>}
+          <span className="merchant-delivery-badge">{m.delivery_mode==='merchant'?'Reparto propio':'Entrega Guti'}</span>
         </div>
-        <div className="g6-merchant-body">
-          <small className="g6-merchant-overline">{isFood?'SABOR DE AQUÍ':'TIENDA LOCAL'}</small>
+        <div className="merchant-copy-v3">
           <h3>{m.name}</h3>
-          <p>{m.description||'Algo bueno te está esperando aquí.'}</p>
-          <div className="g6-merchant-meta">
-            <span>{Number(m.rating_count||0)>=5?<>★ {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></>:<>✦ Recién en Guti</>}</span>
-            <span>◷ {Number(m.prep_minutes||25)} min aprox.</span>
-          </div>
-          <div className="g6-merchant-end"><span>Envío fijo <b>$45</b></span><span className="g6-merchant-go">Ver menú <ArrowUpRight/></span></div>
+          <p>{m.description||'Negocio local'}</p>
+          <div>{Number(m.rating_count||0)>=5&&<span><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}<span><Clock3/> 25–40 min</span></div>
         </div>
       </button>
-      <button className={`g6-save ${fav?'active':''}`} onClick={()=>toggleFavorite(m.id)} aria-label={fav?'Eliminar de favoritos':'Agregar a favoritos'}>{fav?'♥':'♡'}</button>
+      <button className={fav?'favorite-heart active':'favorite-heart'} onClick={()=>toggleFavorite(m.id)}><Heart/></button>
     </article>
   }
 
 
   function OrderChatModal(){
     if(!chatOrder)return null
-    return <div className="modal-backdrop chat-backdrop-v42 g6-chat-backdrop" onClick={()=>setChatOrder(null)}>
-      <section className="order-chat-modal-v42 g6-chat" onClick={e=>e.stopPropagation()}>
+    return <div className="modal-backdrop chat-backdrop-v42" onClick={()=>setChatOrder(null)}>
+      <section className="order-chat-modal-v42" onClick={e=>e.stopPropagation()}>
         <header><div><span><MessageCircle/></span><div><small>CHAT DEL PEDIDO #{chatOrder.id.slice(0,8)}</small><b>RepaGuti</b><em>Usa este chat sólo para coordinar tu entrega.</em></div></div><button onClick={()=>setChatOrder(null)}><X/></button></header>
         <div className="chat-security-v42"><ShieldCheck/><span>Por seguridad, evita compartir datos personales o información de pago.</span></div>
         <div className="chat-messages-v42">
@@ -1396,42 +1392,114 @@ export default function Page(){
 
   function HomeView(){
     const promoMerchant=merchants.find(m=>m.cover_url)||merchants[0]
-    const restaurants=merchants.filter(m=>m.merchant_type==='restaurant')
-    const others=merchants.filter(m=>m.merchant_type!=='restaurant')
     return <>
       <Header/>
-      <div className="g6-home-intro">
-        <div className="g6-home-intro-copy"><span className="g6-kicker">HOLA, GUTIÉRREZ ZAMORA <span>✳</span></span><h1>Lo de hoy<br/><em>se antoja aquí.</em></h1><p>Tus lugares favoritos, sin salir de casa.</p></div>
-        <div className="g6-home-doodle" aria-hidden="true"><span>¡</span><strong>YA<br/>ANTOJA</strong><span>!</span></div>
+
+      <section className="brand-hero-v3">
+        <img src="/brand/guti-logo.svg" alt="Guti Delivery"/>
+        <p>Lo que necesites, te lo llevamos.</p>
+      </section>
+
+      <div className="search-v3">
+        <Search/>
+        <input placeholder="¿Qué quieres pedir hoy?" value={query} onChange={e=>setQuery(e.target.value)}/>
       </div>
-      <div className="search-v3 g6-search"><Search/><input aria-label="Buscar negocios o productos" placeholder="Busca un antojo, un negocio..." value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')setTab('explore')}}/><button onClick={()=>setTab('explore')} aria-label="Buscar">Buscar <ArrowUpRight/></button></div>
-      <section className="g6-categories" aria-label="Explorar categorías">
-        <div className="g6-section-top"><div><small>EN UN TOQUE</small><h2>¿Qué necesitas?</h2></div><span>Elige tu plan</span></div>
-        <div className="g6-category-rail">{categoryDefs.map(c=>{const v=gutiCategoryVisuals[c.key]||gutiCategoryVisuals.other;return <button className={`g6-category g6-tone-${v.color}`} key={c.key} onClick={()=>{if(c.coming){setMessage(`${c.label} estará disponible pronto.`);return}setCategory(c.key);setTab('explore')}}><span className="g6-category-art" aria-hidden="true">{v.symbol}</span><b>{c.label}</b><small>{c.coming?'MUY PRONTO':v.hint}</small></button>})}</div>
+
+      <section className="category-grid-v3">
+        {categoryDefs.map(c=><button key={c.key} onClick={()=>{
+          if(c.coming){setMessage(`${c.label} estará disponible muy pronto.`);return}
+          setCategory(c.key)
+          if(c.key==='all') setTab('explore')
+          else setTab('explore')
+        }}>
+          <span><img src={c.image} alt=""/></span>
+          <b>{c.label}</b>
+          {c.coming&&<em>Pronto</em>}
+        </button>)}
       </section>
+
       <OrderCarousel/>
-      {promoMerchant&&<section className="g6-feature" aria-label="Un negocio para descubrir">
-        <div className="g6-feature-photo">{promoMerchant.cover_url?<img src={promoMerchant.cover_url} alt="" loading="lazy"/>:<span>✷</span>}</div>
-        <div className="g6-feature-copy"><small>↗  UN HALLAZGO DE TU CIUDAD</small><h2>De aquí.<br/><em>Para tu mesa.</em></h2><p>Conoce <b>{promoMerchant.name}</b> y pide algo que valga la pena repetir.</p><button onClick={()=>openMerchant(promoMerchant)}>Ver qué hay de bueno <ArrowUpRight/></button></div>
-      </section>}
-      <section className="g6-collection"><div className="g6-section-top"><div><small>PARA EL ANTOJO</small><h2>Hecho para abrir el apetito<span className="g6-asterisk">*</span></h2></div><button onClick={()=>{setCategory('food');setTab('explore')}}>Ver todos <ArrowUpRight/></button></div>
-        {restaurants.length?<div className="g6-merchant-grid">{restaurants.slice(0,8).map(m=><MerchantCard key={m.id} m={m}/>)}</div>:<div className="g6-collection-empty">Estamos reuniendo los sabores de Zamora. Pronto verás restaurantes aquí.</div>}
+
+      <section className="promo-carousel-v31">
+        <div className="promo-track-v31" style={{transform:`translateX(-${promoIndex*100}%)`}}>
+          <article className="promo-slide-v31 promo-food-v31" onClick={()=>promoMerchant&&openMerchant(promoMerchant)}>
+            {promoMerchant?.cover_url&&<img src={promoMerchant.cover_url} alt=""/>}
+            <div className="promo-overlay-v3"/>
+            <div className="promo-content-v3">
+              <small>PROMO GUTI</small>
+              <h2>Antojo resuelto en minutos</h2>
+              <p>Pide local y recíbelo sin complicaciones.</p>
+              <button>Ver promoción <ArrowRight/></button>
+            </div>
+          </article>
+          <article className="promo-slide-v31 points-slide-v31">
+            <div className="points-art-v31"><Gift/></div>
+            <div className="points-copy-v31">
+              <small>GUTI PUNTOS</small>
+              <h2>Pide local. Gana recompensas.</h2>
+              <p>Acumula puntos con tus pedidos y úsalos después en Guti.mx.</p>
+              <button onClick={()=>setTab('profile')}>Ver mis puntos <ArrowRight/></button>
+            </div>
+          </article>
+        </div>
+        <div className="promo-dots-v31">
+          {[0,1].map(i=><button aria-label={`Ir a promo ${i+1}`} key={i} className={promoIndex===i?'active':''} onClick={()=>setPromoIndex(i)}/>)}
+        </div>
       </section>
-      {others.length>0&&<section className="g6-collection"><div className="g6-section-top"><div><small>MÁS QUE COMIDA</small><h2>Tu ciudad resuelve.</h2></div><button onClick={()=>{setCategory('super');setTab('explore')}}>Explorar <ArrowUpRight/></button></div><div className="g6-merchant-grid">{others.slice(0,6).map(m=><MerchantCard key={m.id} m={m}/>)}</div></section>}
-      <section className="g6-rewards-strip"><span className="g6-rewards-sigil">✳</span><div><small>GUTI RECOMPENSA</small><h2>Un pedido hoy. Algo bueno mañana.</h2><p>Acumula puntos con cada compra.</p></div><button onClick={()=>setTab('profile')}>Mis puntos <ArrowUpRight/></button></section>
-      <footer className="g6-footer"><b>guti<span>.</span></b><span>Hecho para vivirlo aquí, en Gutiérrez Zamora.</span><small>LOCAL SE SABE MEJOR</small></footer>
+
+      <section className="home-section-v3">
+        <div className="home-section-head-v3">
+          <h2>Restaurantes cerca de ti</h2>
+          <button onClick={()=>{setCategory('food');setTab('explore')}}>Ver todos</button>
+        </div>
+        <div className="nearby-scroll-v3">
+          {merchants.filter(m=>m.merchant_type==='restaurant').slice(0,6).map(m=><MerchantCard key={m.id} m={m} compact/>)}
+        </div>
+      </section>
+
+      <section className="home-section-v3">
+        <div className="home-section-head-v3">
+          <h2>También puedes pedir</h2>
+          <button onClick={()=>{setCategory('super');setTab('explore')}}>Ver todos</button>
+        </div>
+        <div className="merchant-grid-v3">
+          {merchants.filter(m=>m.merchant_type!=='restaurant').slice(0,4).map(m=><MerchantCard key={m.id} m={m}/>)}
+        </div>
+      </section>
+
       {GlobalFeedback()}
     </>
   }
 
 
   function ExploreView(){
-    return <><Header/>
-      <div className="g6-page-title"><span>DESCUBRE / ZAMORA</span><h1>Todo lo bueno<br/><em>está cerca.</em></h1><p>Busca, explora y encuentra ese lugar que se va a volver tu favorito.</p></div>
-      <div className="search-v3 g6-search g6-search-explore"><Search/><input placeholder="Busca por negocio o por antojo" value={query} onChange={e=>setQuery(e.target.value)}/>{query?<button onClick={()=>setQuery('')} aria-label="Limpiar búsqueda"><X/></button>:<span className="g6-search-hint">↵</span>}</div>
-      <div className="g6-filter-tabs"><button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>✳ Todos</button><button className={category==='food'?'active':''} onClick={()=>setCategory('food')}>🍽 Comida</button><button className={category==='super'?'active':''} onClick={()=>setCategory('super')}>🧺 Tiendas</button></div>
-      <div className="g6-results-head"><h2>{filteredMerchants.length} lugar{filteredMerchants.length!==1?'es':''} por descubrir</h2><span>↘ HECHO AQUÍ</span></div>
-      <div className="g6-merchant-grid g6-explore-grid">{filteredMerchants.map(m=><MerchantCard key={m.id} m={m}/>)}{!filteredMerchants.length&&<div className="g6-empty"><span>⌕</span><h3>Sin resultados, por ahora.</h3><p>Intenta con otro nombre o explora todas las categorías.</p><button onClick={()=>{setQuery('');setCategory('all')}}>Ver todos los negocios</button></div>}</div>
+    return <>
+      <Header/>
+      <div className="explore-top-v31">
+        <button className="explore-back-v31" onClick={()=>{setQuery('');setCategory('all');setTab('home')}}><ArrowLeft/></button>
+        <div className="page-heading explore-heading-v31">
+          <small>{category==='food'?'RESTAURANTES':category==='super'?'SÚPER Y TIENDAS':'DESCUBRE'}</small>
+          <h1>{category==='food'?'Comida':category==='super'?'Súper':'Explorar'}</h1>
+          <p>{category==='food'?'Restaurantes y comida disponible en Gutiérrez Zamora.':'Negocios disponibles en Gutiérrez Zamora.'}</p>
+        </div>
+      </div>
+
+      <div className="search-v3 explore-search-v31">
+        <Search/>
+        <input placeholder={category==='food'?'Buscar restaurante o comida...':'Buscar negocio...'} value={query} onChange={e=>setQuery(e.target.value)}/>
+        {query&&<button className="clear-search-v31" onClick={()=>setQuery('')}><X/></button>}
+      </div>
+
+      <div className="filter-row">
+        <button className={category==='all'?'active':''} onClick={()=>setCategory('all')}>Todos</button>
+        <button className={category==='food'?'active':''} onClick={()=>setCategory('food')}>Comida</button>
+        <button className={category==='super'?'active':''} onClick={()=>setCategory('super')}>Súper y tiendas</button>
+      </div>
+
+      <div className="merchant-grid-v3 explore-grid">
+        {filteredMerchants.map(m=><MerchantCard key={m.id} m={m}/>)}
+        {!filteredMerchants.length&&<div className="empty-state full"><Search/><h3>No encontramos negocios</h3><p>Prueba con otra búsqueda.</p></div>}
+      </div>
     </>
   }
 
@@ -1440,12 +1508,12 @@ export default function Page(){
     if(!session)return <LoginRequired icon={ReceiptText} title="Tus pedidos viven aquí" text="Inicia sesión para rastrear pedidos activos y consultar tu historial."/>
     return <>
       <Header/>
-      <div className="g6-page-title g6-page-title-orders"><span>TU HISTORIA CON GUTI</span><h1>De aquí,<br/><em>hasta tu puerta.</em></h1><p>Todo lo que pediste. Todo lo que está por llegar.</p></div>
+      <div className="page-heading"><small>TU ACTIVIDAD</small><h1>Mis pedidos</h1><p>Rastrea los que están en curso y consulta pedidos anteriores.</p></div>
       <OrderCarousel/>
       <div className="orders-history">
-        <div className="g6-section-top"><div><small>VOLVER A LO BUENO</small><h2>Tu historial</h2></div><span>{orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).length} pedidos</span></div>
-        {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order history-order-v43 g6-history-card" key={o.id}>
-          <div className="history-order-main-v43"><span className={`history-icon ${o.status}`}>{o.status==='delivered'?'✓':'×'}</span><div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status,o)}</em></div><div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<><button onClick={()=>openRating(o)}><Star/> Calificar</button><button onClick={()=>reorderOrder(o)}>Pedir otra vez</button></>}</div></div>
+        <div className="section-title"><div><small>HISTORIAL</small><h2>Pedidos anteriores</h2></div></div>
+        {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order history-order-v43" key={o.id}>
+          <div className="history-order-main-v43"><span className={`history-icon ${o.status}`}><ReceiptText/></span><div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status,o)}</em></div><div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<><button onClick={()=>openRating(o)}><Star/> Calificar</button><button onClick={()=>reorderOrder(o)}>Pedir otra vez</button></>}</div></div>
           <button className="history-summary-toggle-v43" onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}><ReceiptText/>{expandedSummaries[o.id]?'Ocultar resumen':'Desglosar pedido'}<ChevronDown className={expandedSummaries[o.id]?'rotated':''}/></button>
           {expandedSummaries[o.id]&&<OrderSummary order={o} alwaysOpen/>}
         </article>)}
@@ -1458,8 +1526,8 @@ export default function Page(){
     const favorites=merchants.filter(m=>favoriteIds.includes(m.id))
     return <>
       <Header/>
-      <div className="g6-page-title"><span>TU LISTA PERSONAL</span><h1>Buenos lugares.<br/><em>Guardados aquí.</em></h1><p>Porque hay lugares a los que siempre quieres volver.</p></div>
-      {favorites.length?<div className="g6-merchant-grid g6-favorites-grid">{favorites.map(m=><MerchantCard key={m.id} m={m}/>)}</div>
+      <div className="page-heading"><small>TUS GUARDADOS</small><h1>Favoritos</h1><p>Accede rápido a los negocios que más te gustan.</p></div>
+      {favorites.length?<div className="merchant-grid-v3 favorites-grid-v3">{favorites.map(m=><MerchantCard key={m.id} m={m}/>)}</div>
       :<div className="login-required"><span><Heart/></span><h1>Aún no tienes favoritos</h1><p>Toca el corazón de cualquier negocio para guardarlo aquí.</p><button className="primary-wide" onClick={()=>setTab('home')}>Explorar negocios</button></div>}
     </>
   }
@@ -1468,17 +1536,17 @@ export default function Page(){
     if(!session)return <LoginRequired icon={UserRound} title="Tu cuenta Guti" text="Guarda direcciones, consulta puntos y administra tus pedidos."/>
     return <>
       <Header/>
-      <section className="profile-hero-v2 g6-member-card">
+      <section className="profile-hero-v2">
         <span className="profile-avatar">{(profile?.full_name||session.user.email||'G').charAt(0).toUpperCase()}</span>
-        <div><small>MI ESPACIO GUTI</small><h1>Hola, {(profile?.full_name||'Usuario Guti').split(' ')[0]}<span>.</span></h1><p>{session.user.email}</p></div>
+        <div><small>MI CUENTA</small><h1>{profile?.full_name||'Usuario Guti'}</h1><p>{session.user.email}</p></div>
       </section>
 
-      <div className="profile-stats g6-member-stats">
+      <div className="profile-stats">
         <article><WalletCards/><div><small>Guti Balance</small><b>${Number(profile?.guti_balance||0).toFixed(2)}</b></div></article>
         <article><Gift/><div><small>Guti Puntos</small><b>{profile?.points||0}</b></div></article>
       </div>
 
-      <section className="profile-menu-card g6-profile-menu">
+      <section className="profile-menu-card">
         <button onClick={()=>setShowAddressPicker(true)}><span><MapPinned/></span><div><b>Mis direcciones</b><small>{addresses.length} guardada{addresses.length===1?'':'s'}</small></div><ChevronRight/></button>
         <button onClick={()=>setTab('orders')}><span><ReceiptText/></span><div><b>Mis pedidos</b><small>Historial y seguimiento</small></div><ChevronRight/></button>
         <button onClick={async()=>{const code=profile?.referral_code||'';if(code){await navigator.clipboard?.writeText(code);showProfileToast(`Código ${code} copiado. Compártelo con tus amigos.`)}else showProfileToast('Tu código de referido se está preparando.')}}><span><Gift/></span><div><b>Invitar y ganar</b><small>{profile?.referral_code?`Tu código: ${profile.referral_code}`:'Referidos Guti · gana 100 puntos'}</small></div><ChevronRight/></button>
@@ -1518,7 +1586,7 @@ export default function Page(){
 
     const ProductCard=({p})=>{
       const pricing=priceInfo(p)
-      return <article className="merchant-product-card-v341 g6-product-card">
+      return <article className="merchant-product-card-v341">
         <div className="merchant-product-copy-v341">
           <h3>{p.name}</h3>
           <p>{p.description||'Disponible para pedir en Guti.mx'}</p>
@@ -1529,47 +1597,46 @@ export default function Page(){
           </div>
         </div>
         <div className="merchant-product-image-v341">
-          {p.image_url?<img src={p.image_url} alt={p.name}/>:<span className="g6-product-fallback" aria-hidden="true">✳</span>}
-          <button onClick={()=>add(p)} aria-label={`Agregar ${p.name} al carrito`}><span>Agregar</span><Plus/></button>
+          {p.image_url?<img src={p.image_url} alt={p.name}/>:<UtensilsCrossed/>}
+          <button onClick={()=>add(p)}><Plus/></button>
         </div>
       </article>
     }
 
-    return <main className="client-app merchant-page-v2 g6-merchant-page">
-      <div className="merchant-topbar g6-merchant-toolbar">
+    return <main className="client-app merchant-page-v2">
+      <div className="merchant-topbar">
         <button onClick={()=>setSelectedMerchant(null)}><ArrowLeft/></button>
-        <b><span className="guti-studio-back-brand">guti.</span><span className="guti-studio-back-merchant">{m.name}</span></b>
+        <b>{m.name}</b>
         <button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button>
       </div>
 
-      <section className="merchant-hero-v2 g6-merchant-hero">
+      <section className="merchant-hero-v2">
         {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<span><Store/></span>}
         <div className="merchant-hero-overlay"/>
         <div className="merchant-hero-copy">
-          <small>GUTI PRESENTA / COMERCIO LOCAL</small><h1>{m.name}</h1><p>{m.description||'Todo lo bueno de aquí, disponible para ti.'}</p>
+          <small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p>
           <div>{Number(m.rating_count||0)>=5&&<span><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}<span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div>
         </div>
       </section>
 
-      <section className="merchant-products-v341 g6-menu-content">
-        <div className="g6-menu-intro"><div><span>← ELIGE LO QUE MÁS SE TE ANTOJA</span><h2>¿Qué vas a pedir?</h2><p>Un vistazo al menú de {m.name}. Todo listo para disfrutar.</p></div><div className="g6-menu-doodle" aria-hidden="true">✳</div></div>
-        {categorySections.length>1&&<nav className="guti-studio-menu-tabs" aria-label="Categorías del menú">{categorySections.map(cat=><button key={cat.id} onClick={()=>document.getElementById(`guti-category-${cat.id}`)?.scrollIntoView({behavior:'smooth',block:'start'})}>{cat.name}<span>{cat.products.length}</span></button>)}{uncategorized.length>0&&<button onClick={()=>document.getElementById('guti-category-other')?.scrollIntoView({behavior:'smooth',block:'start'})}>Otros</button>}</nav>}
+      <section className="merchant-products-v341">
+        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
 
         {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
         {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
 
-        {!merchantLoading&&categorySections.map(cat=><section id={`guti-category-${cat.id}`} className="merchant-category-section-v341" key={cat.id}>
+        {!merchantLoading&&categorySections.map(cat=><section className="merchant-category-section-v341" key={cat.id}>
           <div className="merchant-category-heading-v341"><h2>{cat.name}</h2><span>{cat.products.length}</span></div>
           <div className="merchant-products-list-v341">{cat.products.map(p=><ProductCard key={p.id} p={p}/>)}</div>
         </section>)}
 
-        {!merchantLoading&&uncategorized.length>0&&<section id="guti-category-other" className="merchant-category-section-v341">
+        {!merchantLoading&&uncategorized.length>0&&<section className="merchant-category-section-v341">
           <div className="merchant-category-heading-v341"><h2>Otros</h2><span>{uncategorized.length}</span></div>
           <div className="merchant-products-list-v341">{uncategorized.map(p=><ProductCard key={p.id} p={p}/>)}</div>
         </section>}
       </section>
 
-      {cartCount>0&&<button className="floating-cart-bar g6-floating-cart" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
+      {cartCount>0&&<button className="floating-cart-bar" onClick={()=>setShowCart(true)}><span><ShoppingCart/><b>{cartCount} {cartCount===1?'artículo':'artículos'}</b></span><strong>${total.toFixed(2)}</strong></button>}
       {GlobalFeedback()}
       {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}{OrderChatModal()}
     </main>
