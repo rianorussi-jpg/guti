@@ -1,5 +1,5 @@
 'use client'
-const GUTI_BUILD_V430_CLIENT='4.3.0'
+const GUTI_DESIGN_RELEASE='Studio 5.0'
 const GUTI_BUILD_V390_CLIENT='3.9.0'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1272,7 +1272,7 @@ export default function Page(){
     const steps=['Esperando','Preparando','Repartidor','Recogido','Llegó']
 
     return <main className="tracking-page tracking-page-v43">
-      <div className="tracking-top"><button onClick={()=>setShowTracking(false)}><ArrowLeft/></button><b>Rastrear pedido</b><span className="tracking-id">#{order.id.slice(0,8)}</span></div>
+      <div className="tracking-top"><button onClick={()=>setShowTracking(false)} aria-label="Volver"><ArrowLeft/></button><b>Tu pedido en camino</b><span className="tracking-id">#{order.id.slice(0,8)}</span></div>
       <section className="live-order-panel live-order-panel-v43">
         <div className="tracking-status-hero-v43"><span className="live-icon"><Icon/></span><div><div className="live-badge"><i/> ACTUALIZACIÓN EN VIVO</div><small>PASO {info[3]} DE 6</small><h1>{info[0]}</h1><p>{info[1]}</p></div></div>
         <div className="tracking-steps tracking-steps-v43">
@@ -1314,25 +1314,24 @@ export default function Page(){
 
 
   function Header(){
-    return <header className="home-header-v3">
-      <button className="address-header-v3" onClick={()=>setShowAddressPicker(true)}>
-        <MapPin/>
-        <div>
-          <b>{selectedAddress?.label||'Gutiérrez Zamora, Ver.'}</b>
-          <small>{selectedAddress?.formatted_address||'Selecciona tu dirección'}</small>
-        </div>
+    return <header className="home-header-v3 guti-studio-header">
+      <div className="guti-studio-brand" aria-label="Guti, entrega local">
+        <strong>guti<span>.</span></strong>
+        <small>LO BUENO ESTÁ CERCA</small>
+      </div>
+      <button className="address-header-v3 guti-studio-location" onClick={()=>setShowAddressPicker(true)} aria-label="Cambiar dirección de entrega">
+        <span className="guti-studio-pin"><MapPin/></span>
+        <span className="guti-studio-location-copy"><small>ENTREGAR EN</small><b>{selectedAddress?.label||'Gutiérrez Zamora'}</b><em>{selectedAddress?.formatted_address||'Selecciona tu dirección de entrega'}</em></span>
         <ChevronDown/>
       </button>
-      <div className="header-actions-v3">
-        <button className="support-btn-v36" onClick={()=>openSupport(null)} title="Soporte Guti"><Headphones/><span>Soporte</span></button>
-        <button className="cart-btn-v3" onClick={()=>setShowCart(true)}>
-          <ShoppingCart/>
-          {cartCount>0&&<span>{cartCount}</span>}
+      <div className="header-actions-v3 guti-studio-header-actions">
+        <button className="support-btn-v36" onClick={()=>openSupport(null)} title="Hablar con soporte" aria-label="Soporte Guti"><Headphones/><span>Ayuda</span></button>
+        <button className="cart-btn-v3 guti-studio-cart" onClick={()=>setShowCart(true)} aria-label={`Abrir carrito, ${cartCount} artículos`}>
+          <ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}
         </button>
       </div>
     </header>
   }
-
 
   function OrderCarousel(){
     if(!activeOrders.length)return null
@@ -1355,22 +1354,26 @@ export default function Page(){
 
   function MerchantCard({m,compact=false}){
     const fav=favoriteIds.includes(m.id)
-    return <article className={compact?'merchant-card-v3 compact':'merchant-card-v3'}>
-      <button className="merchant-card-main" onClick={()=>openMerchant(m)}>
+    return <article className={compact?'merchant-card-v3 compact guti-studio-merchant-card':'merchant-card-v3 guti-studio-merchant-card'}>
+      <button className="merchant-card-main" onClick={()=>openMerchant(m)} aria-label={`Ver menú de ${m.name}`}>
         <div className="merchant-image-v3">
-          {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<Store/>}
-          <span className="merchant-delivery-badge">{m.delivery_mode==='merchant'?'Reparto propio':'Entrega Guti'}</span>
+          {m.cover_url?<img src={m.cover_url} alt={m.name} loading="lazy"/>:<span className="guti-cover-fallback"><Store/></span>}
+          <span className="merchant-delivery-badge"><Bike/> Envío $45</span>
         </div>
         <div className="merchant-copy-v3">
+          <div className="guti-studio-card-label">{m.merchant_type==='restaurant'?'RESTAURANTE LOCAL':'COMERCIO LOCAL'}</div>
           <h3>{m.name}</h3>
-          <p>{m.description||'Negocio local'}</p>
-          <div>{Number(m.rating_count||0)>=5&&<span><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}<span><Clock3/> 25–40 min</span></div>
+          <p>{m.description||'Descubre todo lo que tiene para ti.'}</p>
+          <div className="guti-studio-card-meta">
+            {Number(m.rating_count||0)>=5&&<span className="guti-studio-rating"><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}
+            <span><Clock3/> Desde {Number(m.prep_minutes||25)} min</span>
+            <span className="guti-studio-card-arrow"><ArrowRight/></span>
+          </div>
         </div>
       </button>
-      <button className={fav?'favorite-heart active':'favorite-heart'} onClick={()=>toggleFavorite(m.id)}><Heart/></button>
+      <button className={fav?'favorite-heart active':'favorite-heart'} onClick={()=>toggleFavorite(m.id)} aria-label={fav?`Quitar ${m.name} de favoritos`:`Guardar ${m.name} en favoritos`}><Heart/></button>
     </article>
   }
-
 
   function OrderChatModal(){
     if(!chatOrder)return null
@@ -1392,85 +1395,72 @@ export default function Page(){
 
   function HomeView(){
     const promoMerchant=merchants.find(m=>m.cover_url)||merchants[0]
+    const restaurants=merchants.filter(m=>m.merchant_type==='restaurant')
+    const others=merchants.filter(m=>m.merchant_type!=='restaurant')
     return <>
       <Header/>
-
-      <section className="brand-hero-v3">
-        <img src="/brand/guti-logo.svg" alt="Guti Delivery"/>
-        <p>Lo que necesites, te lo llevamos.</p>
+      <section className="guti-studio-hero" aria-label="Bienvenido a Guti">
+        <div className="guti-studio-hero-content">
+          <span className="guti-studio-hero-eyebrow"><span/> HECHO PARA TU CIUDAD</span>
+          <h1>Lo bueno de <em>aquí,</em><br/>hasta tu puerta<span className="guti-studio-hero-stop">.</span></h1>
+          <p>Tus antojos favoritos, los negocios de siempre y todo lo que necesitas. Sin ir tan lejos.</p>
+          <div className="guti-studio-hero-trust"><span><Check/> Negocios locales</span><span><Bike/> Entrega a domicilio</span></div>
+        </div>
+        <div className="guti-studio-hero-art" aria-hidden="true"><div className="guti-studio-orbit guti-studio-orbit-one"/><div className="guti-studio-orbit guti-studio-orbit-two"/><span className="guti-studio-hero-glyph">✳</span><div className="guti-studio-hero-stamp">MUY<br/>DE AQUÍ <ArrowRight/></div></div>
       </section>
 
-      <div className="search-v3">
+      <div className="search-v3 guti-studio-main-search">
         <Search/>
-        <input placeholder="¿Qué quieres pedir hoy?" value={query} onChange={e=>setQuery(e.target.value)}/>
+        <input aria-label="Buscar negocios o comida" placeholder="¿Qué se te antoja hoy?" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')setTab('explore')}}/>
+        <button onClick={()=>setTab('explore')} aria-label="Buscar"><ArrowRight/></button>
       </div>
 
-      <section className="category-grid-v3">
-        {categoryDefs.map(c=><button key={c.key} onClick={()=>{
-          if(c.coming){setMessage(`${c.label} estará disponible muy pronto.`);return}
-          setCategory(c.key)
-          if(c.key==='all') setTab('explore')
-          else setTab('explore')
-        }}>
-          <span><img src={c.image} alt=""/></span>
-          <b>{c.label}</b>
-          {c.coming&&<em>Pronto</em>}
-        </button>)}
+      <section className="guti-studio-discovery" aria-label="Categorías">
+        <div className="guti-studio-inline-heading"><span>01 / EXPLORA</span><h2>¿Qué vamos a pedir?</h2></div>
+        <div className="category-grid-v3 guti-studio-categories">
+          {categoryDefs.map(c=><button key={c.key} onClick={()=>{
+            if(c.coming){setMessage(`${c.label} estará disponible muy pronto.`);return}
+            setCategory(c.key);setTab('explore')
+          }}>
+            <span><img src={c.image} alt=""/></span>
+            <b>{c.label}</b>
+            {c.coming&&<em>PRONTO</em>}
+          </button>)}
+        </div>
       </section>
 
       <OrderCarousel/>
 
-      <section className="promo-carousel-v31">
+      {promoMerchant&&<section className="guti-studio-featured" aria-label="Conoce un negocio de tu ciudad">
+        <div className="guti-studio-featured-photo">{promoMerchant.cover_url?<img src={promoMerchant.cover_url} alt={promoMerchant.name} loading="lazy"/>:<Store/>}</div>
+        <div className="guti-studio-featured-copy"><small>EL SPOT DE HOY <span>✦</span></small><h2>Descubre algo<br/><em>delicioso.</em></h2><p>Conoce <b>{promoMerchant.name}</b> y encuentra tu próximo favorito.</p><button onClick={()=>openMerchant(promoMerchant)}>Explorar su menú <ArrowRight/></button></div>
+      </section>}
+
+      <section className="home-section-v3 guti-studio-home-section">
+        <div className="home-section-head-v3 guti-studio-section-head"><div><small>SELECCIÓN LOCAL</small><h2>Para cuando hay <em>antojo</em></h2></div><button onClick={()=>{setCategory('food');setTab('explore')}}>Ver todos <ArrowRight/></button></div>
+        {restaurants.length?<div className="nearby-scroll-v3">{restaurants.slice(0,8).map(m=><MerchantCard key={m.id} m={m} compact/>)}</div>:<div className="guti-studio-empty-collection">Pronto encontrarás restaurantes de tu ciudad aquí.</div>}
+      </section>
+
+      <section className="home-section-v3 guti-studio-home-section">
+        <div className="home-section-head-v3 guti-studio-section-head"><div><small>TODO CERCA DE TI</small><h2>Mucho más que <em>comida</em></h2></div><button onClick={()=>{setCategory('super');setTab('explore')}}>Descubrir <ArrowRight/></button></div>
+        {others.length?<div className="merchant-grid-v3">{others.slice(0,6).map(m=><MerchantCard key={m.id} m={m}/>)}</div>:<div className="guti-studio-empty-collection">Estamos sumando más negocios locales.</div>}
+      </section>
+
+      <section className="promo-carousel-v31 guti-studio-promo" aria-label="Novedades Guti">
         <div className="promo-track-v31" style={{transform:`translateX(-${promoIndex*100}%)`}}>
           <article className="promo-slide-v31 promo-food-v31" onClick={()=>promoMerchant&&openMerchant(promoMerchant)}>
-            {promoMerchant?.cover_url&&<img src={promoMerchant.cover_url} alt=""/>}
-            <div className="promo-overlay-v3"/>
-            <div className="promo-content-v3">
-              <small>PROMO GUTI</small>
-              <h2>Antojo resuelto en minutos</h2>
-              <p>Pide local y recíbelo sin complicaciones.</p>
-              <button>Ver promoción <ArrowRight/></button>
-            </div>
+            {promoMerchant?.cover_url&&<img src={promoMerchant.cover_url} alt="" loading="lazy"/>}
+            <div className="promo-overlay-v3"/><div className="promo-content-v3"><small>HECHO AQUÍ, PARA TI</small><h2>Descubre los sabores de tu ciudad.</h2><p>Apoya lo local en cada pedido.</p><button onClick={()=>promoMerchant&&openMerchant(promoMerchant)}>Explorar <ArrowRight/></button></div>
           </article>
-          <article className="promo-slide-v31 points-slide-v31">
-            <div className="points-art-v31"><Gift/></div>
-            <div className="points-copy-v31">
-              <small>GUTI PUNTOS</small>
-              <h2>Pide local. Gana recompensas.</h2>
-              <p>Acumula puntos con tus pedidos y úsalos después en Guti.mx.</p>
-              <button onClick={()=>setTab('profile')}>Ver mis puntos <ArrowRight/></button>
-            </div>
-          </article>
+          <article className="promo-slide-v31 points-slide-v31"><div className="points-art-v31"><Gift/></div><div className="points-copy-v31"><small>RECOMPENSAS GUTI</small><h2>Cada pedido suma.</h2><p>Acumula puntos y aprovecha tus beneficios.</p><button onClick={()=>setTab('profile')}>Ver mis puntos <ArrowRight/></button></div></article>
         </div>
-        <div className="promo-dots-v31">
-          {[0,1].map(i=><button aria-label={`Ir a promo ${i+1}`} key={i} className={promoIndex===i?'active':''} onClick={()=>setPromoIndex(i)}/>)}
-        </div>
+        <div className="promo-dots-v31">{[0,1].map(i=><button aria-label={`Ir a la novedad ${i+1}`} key={i} className={promoIndex===i?'active':''} onClick={()=>setPromoIndex(i)}/>)}</div>
       </section>
 
-      <section className="home-section-v3">
-        <div className="home-section-head-v3">
-          <h2>Restaurantes cerca de ti</h2>
-          <button onClick={()=>{setCategory('food');setTab('explore')}}>Ver todos</button>
-        </div>
-        <div className="nearby-scroll-v3">
-          {merchants.filter(m=>m.merchant_type==='restaurant').slice(0,6).map(m=><MerchantCard key={m.id} m={m} compact/>)}
-        </div>
-      </section>
-
-      <section className="home-section-v3">
-        <div className="home-section-head-v3">
-          <h2>También puedes pedir</h2>
-          <button onClick={()=>{setCategory('super');setTab('explore')}}>Ver todos</button>
-        </div>
-        <div className="merchant-grid-v3">
-          {merchants.filter(m=>m.merchant_type!=='restaurant').slice(0,4).map(m=><MerchantCard key={m.id} m={m}/>)}
-        </div>
-      </section>
-
+      <footer className="guti-studio-footer"><strong>guti<span>.</span></strong><p>Una ciudad con mucho que ofrecer. <b>Descúbrela aquí.</b></p><small>HECHO PARA GUTIÉRREZ ZAMORA</small></footer>
       {GlobalFeedback()}
     </>
   }
-
 
   function ExploreView(){
     return <>
@@ -1479,7 +1469,7 @@ export default function Page(){
         <button className="explore-back-v31" onClick={()=>{setQuery('');setCategory('all');setTab('home')}}><ArrowLeft/></button>
         <div className="page-heading explore-heading-v31">
           <small>{category==='food'?'RESTAURANTES':category==='super'?'SÚPER Y TIENDAS':'DESCUBRE'}</small>
-          <h1>{category==='food'?'Comida':category==='super'?'Súper':'Explorar'}</h1>
+          <h1>{category==='food'?'Qué rico comer.':category==='super'?'Todo para casa.':'Explora tu ciudad.'}</h1>
           <p>{category==='food'?'Restaurantes y comida disponible en Gutiérrez Zamora.':'Negocios disponibles en Gutiérrez Zamora.'}</p>
         </div>
       </div>
@@ -1508,7 +1498,7 @@ export default function Page(){
     if(!session)return <LoginRequired icon={ReceiptText} title="Tus pedidos viven aquí" text="Inicia sesión para rastrear pedidos activos y consultar tu historial."/>
     return <>
       <Header/>
-      <div className="page-heading"><small>TU ACTIVIDAD</small><h1>Mis pedidos</h1><p>Rastrea los que están en curso y consulta pedidos anteriores.</p></div>
+      <div className="page-heading guti-studio-page-heading"><small>SEGUIMIENTO Y MÁS</small><h1>Tus pedidos<span>.</span></h1><p>Del primer antojo hasta la última entrega, todo aquí.</p></div>
       <OrderCarousel/>
       <div className="orders-history">
         <div className="section-title"><div><small>HISTORIAL</small><h2>Pedidos anteriores</h2></div></div>
@@ -1526,7 +1516,7 @@ export default function Page(){
     const favorites=merchants.filter(m=>favoriteIds.includes(m.id))
     return <>
       <Header/>
-      <div className="page-heading"><small>TUS GUARDADOS</small><h1>Favoritos</h1><p>Accede rápido a los negocios que más te gustan.</p></div>
+      <div className="page-heading guti-studio-page-heading"><small>GUARDADO PARA DESPUÉS</small><h1>Tus favoritos<span>.</span></h1><p>Los lugares que te gustan, siempre a un toque.</p></div>
       {favorites.length?<div className="merchant-grid-v3 favorites-grid-v3">{favorites.map(m=><MerchantCard key={m.id} m={m}/>)}</div>
       :<div className="login-required"><span><Heart/></span><h1>Aún no tienes favoritos</h1><p>Toca el corazón de cualquier negocio para guardarlo aquí.</p><button className="primary-wide" onClick={()=>setTab('home')}>Explorar negocios</button></div>}
     </>
@@ -1538,7 +1528,7 @@ export default function Page(){
       <Header/>
       <section className="profile-hero-v2">
         <span className="profile-avatar">{(profile?.full_name||session.user.email||'G').charAt(0).toUpperCase()}</span>
-        <div><small>MI CUENTA</small><h1>{profile?.full_name||'Usuario Guti'}</h1><p>{session.user.email}</p></div>
+        <div><small>MI ESPACIO GUTI</small><h1>Hola, {(profile?.full_name||'Usuario Guti').split(' ')[0]}<span>.</span></h1><p>{session.user.email}</p></div>
       </section>
 
       <div className="profile-stats">
@@ -1598,7 +1588,7 @@ export default function Page(){
         </div>
         <div className="merchant-product-image-v341">
           {p.image_url?<img src={p.image_url} alt={p.name}/>:<UtensilsCrossed/>}
-          <button onClick={()=>add(p)}><Plus/></button>
+          <button onClick={()=>add(p)} aria-label={`Agregar ${p.name} al carrito`}><Plus/><span>Agregar</span></button>
         </div>
       </article>
     }
@@ -1606,7 +1596,7 @@ export default function Page(){
     return <main className="client-app merchant-page-v2">
       <div className="merchant-topbar">
         <button onClick={()=>setSelectedMerchant(null)}><ArrowLeft/></button>
-        <b>{m.name}</b>
+        <b><span className="guti-studio-back-brand">guti.</span><span className="guti-studio-back-merchant">{m.name}</span></b>
         <button className="cart-button-v2" onClick={()=>setShowCart(true)}><ShoppingCart/>{cartCount>0&&<span>{cartCount}</span>}</button>
       </div>
 
@@ -1614,23 +1604,24 @@ export default function Page(){
         {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<span><Store/></span>}
         <div className="merchant-hero-overlay"/>
         <div className="merchant-hero-copy">
-          <small>GUTI.MX</small><h1>{m.name}</h1><p>{m.description||'Negocio local'}</p>
+          <small>DESCUBRE · COMERCIO LOCAL</small><h1>{m.name}</h1><p>{m.description||'Todo lo bueno de aquí, disponible para ti.'}</p>
           <div>{Number(m.rating_count||0)>=5&&<span><Star/> {Number(m.rating_avg||0).toFixed(1)} <small>({m.rating_count})</small></span>}<span><Clock3/> 25–40 min</span><span><Bike/> $45 envío</span></div>
         </div>
       </section>
 
       <section className="merchant-products-v341">
-        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
+        <div className="guti-studio-menu-title"><div><small>EL MENÚ</small><h2>Elige algo <em>rico.</em></h2><p>Preparado por {m.name}, llevado hasta ti por Guti.</p></div><span><UtensilsCrossed/> ¡Buen provecho!</span></div>
+        {categorySections.length>1&&<nav className="guti-studio-menu-tabs" aria-label="Categorías del menú">{categorySections.map(cat=><button key={cat.id} onClick={()=>document.getElementById(`guti-category-${cat.id}`)?.scrollIntoView({behavior:'smooth',block:'start'})}>{cat.name}<span>{cat.products.length}</span></button>)}{uncategorized.length>0&&<button onClick={()=>document.getElementById('guti-category-other')?.scrollIntoView({behavior:'smooth',block:'start'})}>Otros</button>}</nav>}
 
         {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
         {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
 
-        {!merchantLoading&&categorySections.map(cat=><section className="merchant-category-section-v341" key={cat.id}>
+        {!merchantLoading&&categorySections.map(cat=><section id={`guti-category-${cat.id}`} className="merchant-category-section-v341" key={cat.id}>
           <div className="merchant-category-heading-v341"><h2>{cat.name}</h2><span>{cat.products.length}</span></div>
           <div className="merchant-products-list-v341">{cat.products.map(p=><ProductCard key={p.id} p={p}/>)}</div>
         </section>)}
 
-        {!merchantLoading&&uncategorized.length>0&&<section className="merchant-category-section-v341">
+        {!merchantLoading&&uncategorized.length>0&&<section id="guti-category-other" className="merchant-category-section-v341">
           <div className="merchant-category-heading-v341"><h2>Otros</h2><span>{uncategorized.length}</span></div>
           <div className="merchant-products-list-v341">{uncategorized.map(p=><ProductCard key={p.id} p={p}/>)}</div>
         </section>}

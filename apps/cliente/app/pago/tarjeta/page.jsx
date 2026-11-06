@@ -189,7 +189,7 @@ export default function CardPaymentPage(){
       </div>
 
       <small>PAGO APROBADO</small>
-      <h1>¡Pago confirmado!</h1>
+      <h1>¡Listo! Tu pedido va en camino.</h1>
       <p>Tu pedido ya fue enviado correctamente.</p>
 
       <div className="payment-success-order">
@@ -210,7 +210,7 @@ export default function CardPaymentPage(){
     <section className="card-pay-shell">
       <header className="card-pay-header">
         <button onClick={()=>window.history.back()}><ArrowLeft/></button>
-        <div><small>PAGO SEGURO</small><h1>Tarjeta con Clip</h1></div>
+        <div><small>GUTI · CHECKOUT SEGURO</small><h1>Un paso más y es tuyo.</h1></div>
         <span><LockKeyhole/></span>
       </header>
 
@@ -224,7 +224,7 @@ export default function CardPaymentPage(){
       </section>}
 
       <section className="card-form-panel">
-        <div className="card-secure-title"><ShieldCheck/><div><b>Datos protegidos por Clip</b><small>Guti no recibe tu número completo de tarjeta ni CVV.</small></div></div>
+        <div className="card-secure-title"><ShieldCheck/><div><b>Paga con tranquilidad</b><small>Tu tarjeta está protegida por Clip. Guti no recibe el número completo ni el CVV.</small></div></div>
         {loading&&<div className="card-pay-loading">Cargando formulario seguro...</div>}
         <div id="guti-clip-card" className="card-clip-mount"/>
         <label className="card-phone-label">Celular del titular</label>
