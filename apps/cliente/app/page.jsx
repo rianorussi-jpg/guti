@@ -1620,7 +1620,7 @@ export default function Page(){
       </section>
 
       <section className="merchant-products-v341">
-        <div className="section-title"><div><small>MENÚ</small><h2>Productos</h2></div></div>
+        <h2 className="menu-title-v5">Menú</h2>
 
         {merchantLoading&&<div className="loading-card">Cargando productos...</div>}
         {!merchantLoading&&!products.length&&<div className="empty-state"><Store/><h3>Aún no hay productos</h3><p>Este negocio todavía está preparando su catálogo.</p></div>}
