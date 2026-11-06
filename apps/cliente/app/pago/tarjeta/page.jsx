@@ -210,10 +210,20 @@ export default function CardPaymentPage(){
     <section className="card-pay-shell">
       <header className="card-pay-header">
         <button onClick={()=>window.history.back()}><ArrowLeft/></button>
-        <div><small>GUTI · CHECKOUT SEGURO</small><h1>Un paso más y es tuyo.</h1></div>
+        <div><small>TU PEDIDO / PAGO SEGURO</small><h1>Terminemos lo bueno.</h1></div>
         <span><LockKeyhole/></span>
       </header>
 
+      <div className="g6-clip-layout">
+        <aside className="g6-clip-brand-panel" aria-label="Guti pago seguro">
+          <div className="g6-clip-wordmark">guti<span>.</span></div>
+          <span className="g6-clip-eyebrow">LA PARTE MÁS RICA VIENE DESPUÉS</span>
+          <h2>Ya casi<br/><em>es tuyo.</em></h2>
+          <p>De tus lugares favoritos, directo a tu puerta. Estás a un paso de disfrutarlo.</p>
+          <div className="g6-clip-sticker" aria-hidden="true">PAGO<br/>SEGURO<br/>✳</div>
+          <div className="g6-clip-brand-bottom"><ShieldCheck/> Tu pago viaja protegido con Clip</div>
+        </aside>
+        <div className="g6-clip-fields">
       {checkout&&<section className="card-order-summary">
         <div className="card-merchant">
           <span>{checkout.merchant_logo?<img src={checkout.merchant_logo} alt=""/>:<Store/>}</span>
@@ -239,6 +249,8 @@ export default function CardPaymentPage(){
         {processing?<span>Procesando...</span>:<><span>Pagar con tarjeta</span><b>${Number(checkout?.total||0).toFixed(2)}</b></>}
       </button>
       <div className="card-powered"><LockKeyhole/> Pago procesado de forma segura por Clip</div>
+        </div>
+      </div>
     </section>
 
     {threeDS?.url&&<div className="three-ds-overlay">
