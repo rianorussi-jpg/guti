@@ -845,8 +845,8 @@ export default function Page(){
       setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId))
       setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setCheckoutIdempotencyKey('');setShowCheckout(false)
       setCardToken(null);setCardReady(false)
+      setShowCart(false);setSelectedMerchant(null);setTrackingOrderId(result.order_id);setTab('home');setShowTracking(true)
       await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
-      setTrackingOrderId(result.order_id);setTab('home');setShowTracking(true)
       return
     }
 
@@ -862,8 +862,8 @@ export default function Page(){
     if(itemNoteError)console.warn('No se pudieron sincronizar notas de producto',itemNoteError)
     const order={id:orderId}
     setCart(prev=>prev.filter(x=>x.merchant_id!==merchantId));setCheckoutNotes('');setCouponCode('');setPointsToUse(0);setCheckoutQuote(null);setCheckoutMerchantId(null);setCheckoutIdempotencyKey('');setShowCheckout(false);setCheckoutBusy(false)
+    setShowCart(false);setSelectedMerchant(null);setTrackingOrderId(order.id);setTab('home');setShowTracking(true)
     await Promise.all([loadActiveOrders(session.user.id),loadOrderHistory(session.user.id)])
-    setTrackingOrderId(order.id);setTab('home');setShowTracking(true)
   }
 
 
@@ -1241,7 +1241,7 @@ export default function Page(){
 
   function CurrentOrderView(){
     const order=activeOrder
-    if(!order&&!deliveredSuccess)return null
+    if(!order&&!deliveredSuccess)return <main className="tracking-page tracking-page-v43"><div className="tracking-top"><button onClick={()=>{setShowTracking(false);setTab('home')}}><ArrowLeft/></button><b>Tu pedido</b><span/></div><section className="tracking-loading-v5"><span className="live-icon"><Clock3/></span><h2>Confirmando tu pedido…</h2><p>Un momento, estamos preparando el seguimiento.</p></section></main>
     const delivered=deliveredSuccess||(order?.status==='delivered'?order:null)
     if(delivered){
       return <main className="tracking-page tracking-page-v43">
@@ -1250,7 +1250,7 @@ export default function Page(){
           <span className="delivered-check"><Check/></span>
           <small>PASO 6 DE 6</small><h1>¡Pedido entregado con éxito!</h1>
           <p>Gracias por pedir con Guti.mx. Esperamos que lo disfrutes.</p>
-          <OrderSummary order={delivered}/>
+          {OrderSummary({order:delivered})}
           {delivered.courier_id&&<div className="delivered-rate-courier-v43"><small>CALIFICA A TU REPAGUTI</small><b>¿Cómo fue tu entrega?</b><div>{[1,2,3,4,5].map(n=><button key={n} onClick={()=>openRating(delivered)} aria-label={`${n} estrellas`}><Star/></button>)}</div></div>}
           <button className="support-tracking-btn" onClick={()=>openSupport(delivered.id)}><Headphones/>Soporte Guti</button>
         </section>
@@ -1284,7 +1284,7 @@ export default function Page(){
           <div><span>Total</span><b>${Number(order.total).toFixed(2)}</b></div>
           <div><span>Estado</span><b className="green">{statusLabel(order.status,order)}</b></div>
         </div>
-        <OrderSummary order={order}/>
+        {OrderSummary({order:order})}
         {order.courier_id&&<div className="tracking-courier-card-v42"><span><Bike/></span><div><small>TU REPAGUTI</small><b>{arrived?'Tu RepaGuti ya llegó':'Puedes escribirle si tienes alguna duda'}</b>{arrived&&<p>Encuéntrate con él para recibir tu pedido.</p>}</div><button onClick={()=>openOrderChat(order)}><MessageCircle/>Chatear</button></div>}
         {order.payment_method==='card'&&order.delivery_pin&&arrived&&<div className="delivery-pin-client"><ShieldCheck/><div><small>PIN DE ENTREGA</small><b>{order.delivery_pin}</b><p>Díselo al repartidor únicamente cuando tengas tu pedido en la mano.</p></div></div>}
         <div className="tracking-actions-v39">
@@ -1347,7 +1347,7 @@ export default function Page(){
             <strong>${Number(o.total).toFixed(2)}</strong>
           </div>
           <div className="active-order-card-actions-v43"><button onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}><ReceiptText/>{expandedSummaries[o.id]?'Ocultar resumen':'Ver resumen'}</button><button onClick={()=>{setTrackingOrderId(o.id);setShowTracking(true)}}>Rastrear pedido <ArrowRight/></button></div>
-          {expandedSummaries[o.id]&&<OrderSummary order={o} alwaysOpen/>}
+          {expandedSummaries[o.id]&&OrderSummary({order:o,alwaysOpen:true})}
         </article>)}
       </div>
     </section>
@@ -1355,7 +1355,7 @@ export default function Page(){
 
   function MerchantCard({m,compact=false}){
     const fav=favoriteIds.includes(m.id)
-    return <article className={compact?'merchant-card-v3 compact':'merchant-card-v3'}>
+    return <article key={m.id} className={compact?'merchant-card-v3 compact':'merchant-card-v3'}>
       <button className="merchant-card-main" onClick={()=>openMerchant(m)}>
         <div className="merchant-image-v3">
           {m.cover_url?<img src={m.cover_url} alt={m.name}/>:<Store/>}
@@ -1393,7 +1393,7 @@ export default function Page(){
   function HomeView(){
     const promoMerchant=merchants.find(m=>m.cover_url)||merchants[0]
     return <>
-      <Header/>
+      {Header()}
 
       <section className="brand-hero-v3">
         <img src="/brand/guti-logo.svg" alt="Guti Delivery"/>
@@ -1418,7 +1418,7 @@ export default function Page(){
         </button>)}
       </section>
 
-      <OrderCarousel/>
+      {OrderCarousel()}
 
       <section className="promo-carousel-v31">
         <div className="promo-track-v31" style={{transform:`translateX(-${promoIndex*100}%)`}}>
@@ -1453,7 +1453,7 @@ export default function Page(){
           <button onClick={()=>{setCategory('food');setTab('explore')}}>Ver todos</button>
         </div>
         <div className="nearby-scroll-v3">
-          {merchants.filter(m=>m.merchant_type==='restaurant').slice(0,6).map(m=><MerchantCard key={m.id} m={m} compact/>)}
+          {merchants.filter(m=>m.merchant_type==='restaurant').slice(0,6).map(m=>MerchantCard({m,compact:true}))}
         </div>
       </section>
 
@@ -1463,7 +1463,7 @@ export default function Page(){
           <button onClick={()=>{setCategory('super');setTab('explore')}}>Ver todos</button>
         </div>
         <div className="merchant-grid-v3">
-          {merchants.filter(m=>m.merchant_type!=='restaurant').slice(0,4).map(m=><MerchantCard key={m.id} m={m}/>)}
+          {merchants.filter(m=>m.merchant_type!=='restaurant').slice(0,4).map(m=>MerchantCard({m}))}
         </div>
       </section>
 
@@ -1474,7 +1474,7 @@ export default function Page(){
 
   function ExploreView(){
     return <>
-      <Header/>
+      {Header()}
       <div className="explore-top-v31">
         <button className="explore-back-v31" onClick={()=>{setQuery('');setCategory('all');setTab('home')}}><ArrowLeft/></button>
         <div className="page-heading explore-heading-v31">
@@ -1497,7 +1497,7 @@ export default function Page(){
       </div>
 
       <div className="merchant-grid-v3 explore-grid">
-        {filteredMerchants.map(m=><MerchantCard key={m.id} m={m}/>)}
+        {filteredMerchants.map(m=>MerchantCard({m}))}
         {!filteredMerchants.length&&<div className="empty-state full"><Search/><h3>No encontramos negocios</h3><p>Prueba con otra búsqueda.</p></div>}
       </div>
     </>
@@ -1505,17 +1505,17 @@ export default function Page(){
 
 
   function OrdersView(){
-    if(!session)return <LoginRequired icon={ReceiptText} title="Tus pedidos viven aquí" text="Inicia sesión para rastrear pedidos activos y consultar tu historial."/>
+    if(!session)return LoginRequired({icon:ReceiptText,title:"Tus pedidos viven aquí",text:"Inicia sesión para rastrear pedidos activos y consultar tu historial."})
     return <>
-      <Header/>
+      {Header()}
       <div className="page-heading"><small>TU ACTIVIDAD</small><h1>Mis pedidos</h1><p>Rastrea los que están en curso y consulta pedidos anteriores.</p></div>
-      <OrderCarousel/>
+      {OrderCarousel()}
       <div className="orders-history">
         <div className="section-title"><div><small>HISTORIAL</small><h2>Pedidos anteriores</h2></div></div>
         {orderHistory.filter(o=>['delivered','cancelled'].includes(o.status)).map(o=><article className="history-order history-order-v43" key={o.id}>
           <div className="history-order-main-v43"><span className={`history-icon ${o.status}`}><ReceiptText/></span><div><b>{o.merchants?.name||'Negocio'}</b><small>#{o.id.slice(0,8)} · {new Date(o.created_at).toLocaleDateString('es-MX')}</small><em>{statusLabel(o.status,o)}</em></div><div className="history-order-actions"><strong>${Number(o.total).toFixed(2)}</strong>{o.status==='delivered'&&<><button onClick={()=>openRating(o)}><Star/> Calificar</button><button onClick={()=>reorderOrder(o)}>Pedir otra vez</button></>}</div></div>
           <button className="history-summary-toggle-v43" onClick={()=>setExpandedSummaries(x=>({...x,[o.id]:!x[o.id]}))}><ReceiptText/>{expandedSummaries[o.id]?'Ocultar resumen':'Desglosar pedido'}<ChevronDown className={expandedSummaries[o.id]?'rotated':''}/></button>
-          {expandedSummaries[o.id]&&<OrderSummary order={o} alwaysOpen/>}
+          {expandedSummaries[o.id]&&OrderSummary({order:o,alwaysOpen:true})}
         </article>)}
         {!orderHistory.some(o=>['delivered','cancelled'].includes(o.status))&&<div className="empty-state small"><ReceiptText/><h3>Aún no hay historial</h3><p>Tus pedidos completados aparecerán aquí.</p></div>}
       </div>
@@ -1525,17 +1525,17 @@ export default function Page(){
   function FavoritesView(){
     const favorites=merchants.filter(m=>favoriteIds.includes(m.id))
     return <>
-      <Header/>
+      {Header()}
       <div className="page-heading"><small>TUS GUARDADOS</small><h1>Favoritos</h1><p>Accede rápido a los negocios que más te gustan.</p></div>
-      {favorites.length?<div className="merchant-grid-v3 favorites-grid-v3">{favorites.map(m=><MerchantCard key={m.id} m={m}/>)}</div>
+      {favorites.length?<div className="merchant-grid-v3 favorites-grid-v3">{favorites.map(m=>MerchantCard({m}))}</div>
       :<div className="login-required"><span><Heart/></span><h1>Aún no tienes favoritos</h1><p>Toca el corazón de cualquier negocio para guardarlo aquí.</p><button className="primary-wide" onClick={()=>setTab('home')}>Explorar negocios</button></div>}
     </>
   }
 
   function ProfileView(){
-    if(!session)return <LoginRequired icon={UserRound} title="Tu cuenta Guti" text="Guarda direcciones, consulta puntos y administra tus pedidos."/>
+    if(!session)return LoginRequired({icon:UserRound,title:"Tu cuenta Guti",text:"Guarda direcciones, consulta puntos y administra tus pedidos."})
     return <>
-      <Header/>
+      {Header()}
       <section className="profile-hero-v2">
         <span className="profile-avatar">{(profile?.full_name||session.user.email||'G').charAt(0).toUpperCase()}</span>
         <div><small>MI CUENTA</small><h1>{profile?.full_name||'Usuario Guti'}</h1><p>{session.user.email}</p></div>
@@ -1562,7 +1562,7 @@ export default function Page(){
 
   function LoginRequired({icon:Icon,title,text}){
     return <>
-      <Header/>
+      {Header()}
       <div className="login-required"><span><Icon/></span><h1>{title}</h1><p>{text}</p><button className="primary-wide" onClick={()=>setShowAuth(true)}>Entrar o crear cuenta</button></div>
     </>
   }
@@ -1586,7 +1586,7 @@ export default function Page(){
 
     const ProductCard=({p})=>{
       const pricing=priceInfo(p)
-      return <article className="merchant-product-card-v341">
+      return <article key={p.id} className="merchant-product-card-v341">
         <div className="merchant-product-copy-v341">
           <h3>{p.name}</h3>
           <p>{p.description||'Disponible para pedir en Guti.mx'}</p>
@@ -1627,12 +1627,12 @@ export default function Page(){
 
         {!merchantLoading&&categorySections.map(cat=><section className="merchant-category-section-v341" key={cat.id}>
           <div className="merchant-category-heading-v341"><h2>{cat.name}</h2><span>{cat.products.length}</span></div>
-          <div className="merchant-products-list-v341">{cat.products.map(p=><ProductCard key={p.id} p={p}/>)}</div>
+          <div className="merchant-products-list-v341">{cat.products.map(p=>ProductCard({p:p}))}</div>
         </section>)}
 
         {!merchantLoading&&uncategorized.length>0&&<section className="merchant-category-section-v341">
           <div className="merchant-category-heading-v341"><h2>Otros</h2><span>{uncategorized.length}</span></div>
-          <div className="merchant-products-list-v341">{uncategorized.map(p=><ProductCard key={p.id} p={p}/>)}</div>
+          <div className="merchant-products-list-v341">{uncategorized.map(p=>ProductCard({p:p}))}</div>
         </section>}
       </section>
 
@@ -1642,8 +1642,8 @@ export default function Page(){
     </main>
   }
 
-  if(showTracking&&(activeOrder||deliveredSuccess))return <CurrentOrderView/>
-  if(selectedMerchant)return <MerchantView/>
+  if(showTracking&&(activeOrder||deliveredSuccess||trackingOrderId))return CurrentOrderView()
+  if(selectedMerchant)return MerchantView()
 
   return <main className="client-app">
     <div className="client-content">
@@ -1653,7 +1653,7 @@ export default function Page(){
       {tab==='favorites'&&FavoritesView()}
       {tab==='profile'&&ProfileView()}
     </div>
-    <BottomNav/>
+    {BottomNav()}
     {profileToast&&<div className="global-profile-toast" role="status"><span>{profileToast}</span><button onClick={()=>setProfileToast('')} aria-label="Cerrar"><X/></button></div>}
     {CartDrawer()}{CheckoutModal()}{ProductCustomizationModal()}{SupportModal()}{AuthModal()}{AddressModal()}{RatingModal()}{OrderChatModal()}
   </main>
