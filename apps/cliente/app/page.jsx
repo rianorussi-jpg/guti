@@ -1396,8 +1396,12 @@ export default function Page(){
       {Header()}
 
       <section className="brand-hero-v3">
-        <img src="/brand/guti-logo.svg" alt="Guti Delivery"/>
-        <p>Lo que necesites, te lo llevamos.</p>
+        <div className="brand-copy-v7">
+          <img src="/brand/guti-logo.svg" alt="Guti Delivery"/>
+          <p>Lo que necesites,<br/>te lo llevamos.</p>
+          <span className="brand-pill-v7"><Bike/> Entrega rápida · Seguimiento en vivo</span>
+        </div>
+        <span className="brand-art-v7" aria-hidden="true"><Bike/></span>
       </section>
 
       <div className="search-v3">
